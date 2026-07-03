@@ -26,7 +26,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y fonts-dejavu
         python -m pip install --upgrade pip
-        pip install feedparser Pillow moviepy==1.0.33
+        pip install feedparser Pillow moviepy==1.0.3
 
     - name: 4. Paleidžiamas agentas video kūrimui
       run: python agent.py
