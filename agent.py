@@ -14,23 +14,19 @@ VIDEO_FILE = "bernardinai.mp4"
 LOGO_FILE = "logo.png"
 IMAGE_FILE = "article_image.jpg"
 
-# Naudosime patikimą Ubuntu sistemos šriftą (garantuotos lietuviškos raidės)
 FONT_TITLE_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 FONT_SUB_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
 def main():
     feed = feedparser.parse(RSS_URL)
     if not feed.entries:
-        print("RSS srautas tuščias arba nepasiekiamas.")
+        print("RSS srautas tuščias.")
         return
 
     latest_entry = feed.entries[0]
     latest_link = latest_entry.link
-    
-    # Svarbu: iššifruojame HTML kodus į normalias lietuviškas raides!
     latest_title = html.unescape(latest_entry.title)
 
-    # Patikriname, ar straipsnis naujas
     old_link = ""
     if os.path.exists(TXT_FILE):
         with open(TXT_FILE, "r", encoding="utf-8") as f:
@@ -40,9 +36,9 @@ def main():
         print("Naujų straipsnių nerasta. Agentas baigia darbą.")
         return
 
-    print(f"Kuriame video straipsniui: {latest_title}")
+    print(f"Kuriame video: {latest_title}")
 
-    # Nuotraukos paieška RSS viduje
+    # Nuotraukos paieška
     image_url = None
     if 'media_content' in latest_entry and len(latest_entry.media_content) > 0:
         image_url = latest_entry.media_content[0].get('url')
@@ -58,11 +54,10 @@ def main():
     if image_url:
         try:
             urllib.request.urlretrieve(image_url, IMAGE_FILE)
-            print("Nuotrauka sėkmingai rasta ir atsisiųsta!")
         except Exception as e:
             print(f"Nepavyko atsisiųsti nuotraukos: {e}")
 
-    # Full HD formatas ekranams
+    # Ekrano paruošimas
     width, height = 1920, 1080
     bg_color = (122, 34, 34) 
     image_canvas = Image.new("RGB", (width, height), bg_color)
@@ -71,71 +66,86 @@ def main():
     has_image = False
     if os.path.exists(IMAGE_FILE):
         try:
-            # Paimame nuotrauką ir apkerpame, kad užimtų lygiai pusę ekrano
             article_img = Image.open(IMAGE_FILE).convert("RGB")
             article_img = ImageOps.fit(article_img, (960, 1080), method=Image.Resampling.LANCZOS)
             image_canvas.paste(article_img, (0, 0))
             has_image = True
-        except Exception as e:
-            print(f"Klaida įkeliant nuotrauką: {e}")
-
-    # Nustatome teksto ir logotipo centrą
-    center_x = 1440 if has_image else 960
-    max_text_width = 820 if has_image else 1700
-
-    # Logotipas (ženkliai padidintas)
-    if os.path.exists(LOGO_FILE):
-        try:
-            logo = Image.open(LOGO_FILE).convert("RGBA")
-            logo.thumbnail((600, 250)) 
-            logo_x = center_x - (logo.width // 2)
-            image_canvas.paste(logo, (logo_x, 100), logo)
         except:
             pass
 
-    # Patikriname šriftą prieš tęsiant, kad nepasikartotų "brūkšnelio" klaida
+    # Erdvės apskaičiavimas
+    center_x = 1440 if has_image else 960
+    max_text_width = 820 if has_image else 1700
+
+    # Logotipo piešimas
+    logo_bottom_y = 100
+    if os.path.exists(LOGO_FILE):
+        try:
+            logo = Image.open(LOGO_FILE).convert("RGBA")
+            logo.thumbnail((500, 200)) 
+            logo_x = center_x - (logo.width // 2)
+            logo_y = 80
+            image_canvas.paste(logo, (logo_x, logo_y), logo)
+            logo_bottom_y = logo_y + logo.height
+        except:
+            pass
+
     if not os.path.exists(FONT_TITLE_FILE):
-        print(f"KLAIDA: Nerastas šriftas {FONT_TITLE_FILE}. Agentas stabdomas.")
         sys.exit(1)
 
-    # Daug didesni šriftai ekranams (iki 3 kartų didesni)!
-    font_title_size = 90
-    font_sub_size = 50
-    font_title = ImageFont.truetype(FONT_TITLE_FILE, font_title_size)
+    # Apatinio adreso piešimas
+    font_sub_size = 40
     font_sub = ImageFont.truetype(FONT_SUB_FILE, font_sub_size)
+    url_y = 1000
+    draw.text((center_x, url_y), "www.bernardinai.lt", font=font_sub, fill=(255, 255, 255), anchor="mm")
 
-    # Teksto skaldymas eilutėmis su patikimu pločio matavimu
-    words = latest_title.split()
+    # DINAMINIS ŠRIFTO SKAIČIAVIMAS
+    # Apibrėžiame, kiek turime vietos tarp logotipo apačios ir URL adreso
+    available_height = url_y - logo_bottom_y - 80  # 80px saugi paraštė (padding)
+    
+    font_size = 90 # Pradinis, didžiausias leistinas šriftas
     lines = []
-    current_line = ""
-    for word in words:
-        test_line = f"{current_line} {word}".strip()
-        bbox = draw.textbbox((0, 0), test_line, font=font_title)
-        text_width = bbox[2] - bbox[0]
+    
+    while font_size > 20:
+        font_title = ImageFont.truetype(FONT_TITLE_FILE, font_size)
+        words = latest_title.split()
+        test_lines = []
+        current_line = ""
         
-        if text_width < max_text_width:
-            current_line = test_line
-        else:
-            if current_line: lines.append(current_line)
-            current_line = word
-    if current_line: lines.append(current_line)
+        # Teksto laužymas į eilutes šiam šrifto dydžiui
+        for word in words:
+            test_line = f"{current_line} {word}".strip()
+            bbox = draw.textbbox((0, 0), test_line, font=font_title)
+            text_width = bbox[2] - bbox[0]
+            
+            if text_width < max_text_width:
+                current_line = test_line
+            else:
+                if current_line: test_lines.append(current_line)
+                current_line = word
+        if current_line: test_lines.append(current_line)
+        
+        # Tikriname, ar visos eilutės telpa į vertikalią erdvę
+        line_spacing = font_size * 1.3
+        total_text_height = len(test_lines) * line_spacing
+        
+        if total_text_height <= available_height:
+            lines = test_lines
+            break # Radome tinkamą dydį!
+            
+        font_size -= 5 # Jei netelpa, mažiname šriftą 5 pikseliais ir bandome vėl
 
-    # Dinamiškas aukščio apskaičiavimas, kad tekstas būtų vertikaliame centre
-    line_spacing = font_title_size * 1.4
-    total_text_height = len(lines) * line_spacing
-    y_text = (1080 - total_text_height) // 2 + 80 
-
+    # Teksto piešimas centre tarp logotipo ir adreso
+    start_y = logo_bottom_y + 40 + (available_height - total_text_height) / 2
+    
     for line in lines:
-        draw.text((center_x, y_text), line, font=font_title, fill=(255, 255, 255), anchor="mm")
-        y_text += line_spacing
-
-    # Adresas pačioje apačioje (dideliu šriftu, kad tikrai matytųsi)
-    draw.text((center_x, 1000), "www.bernardinai.lt", font=font_sub, fill=(255, 255, 255), anchor="mm")
+        draw.text((center_x, start_y), line, font=font_title, fill=(255, 255, 255), anchor="ma")
+        start_y += line_spacing
 
     frame_path = "temp_frame.png"
     image_canvas.save(frame_path)
 
-    print("Generuojamas Full HD video failas...")
+    print("Generuojamas video failas...")
     clip = ImageClip(frame_path).set_duration(10)
     clip.write_videofile(VIDEO_FILE, fps=24, codec="libx264", audio=False)
 
