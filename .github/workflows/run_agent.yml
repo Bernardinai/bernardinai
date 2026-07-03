@@ -24,7 +24,7 @@ jobs:
     - name: 3. Įrašomos programai reikalingos bibliotekos
       run: |
         python -m pip install --upgrade pip
-        pip install feedparser Pillow moviepy
+        pip install feedparser Pillow moviepy==1.0.3
 
     - name: 4. Paleidžiamas agentas video kūrimui
       run: python agent.py
