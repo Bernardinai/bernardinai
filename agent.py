@@ -73,11 +73,10 @@ def main():
         except:
             pass
 
-    # Erdvės apskaičiavimas
     center_x = 1440 if has_image else 960
     max_text_width = 820 if has_image else 1700
 
-    # Logotipo piešimas
+    # Logotipo ir jo fono piešimas
     logo_bottom_y = 100
     if os.path.exists(LOGO_FILE):
         try:
@@ -85,10 +84,19 @@ def main():
             logo.thumbnail((500, 200)) 
             logo_x = center_x - (logo.width // 2)
             logo_y = 80
+            
+            # Sukuriame baltą foną su užapvalintais kampais po logotipu
+            padding_x = 30
+            padding_y = 20
+            bg_box = [logo_x - padding_x, logo_y - padding_y, logo_x + logo.width + padding_x, logo_y + logo.height + padding_y]
+            draw.rounded_rectangle(bg_box, radius=15, fill=(255, 255, 255))
+            
+            # Uždėdami logotipą, panaudojame jį patį kaip kaukę, kad išsaugotume skaidrumą
             image_canvas.paste(logo, (logo_x, logo_y), logo)
-            logo_bottom_y = logo_y + logo.height
-        except:
-            pass
+            
+            logo_bottom_y = logo_y + logo.height + padding_y
+        except Exception as e:
+            print(f"Klaida įkeliant logotipą: {e}")
 
     if not os.path.exists(FONT_TITLE_FILE):
         sys.exit(1)
@@ -99,11 +107,9 @@ def main():
     url_y = 1000
     draw.text((center_x, url_y), "www.bernardinai.lt", font=font_sub, fill=(255, 255, 255), anchor="mm")
 
-    # DINAMINIS ŠRIFTO SKAIČIAVIMAS
-    # Apibrėžiame, kiek turime vietos tarp logotipo apačios ir URL adreso
-    available_height = url_y - logo_bottom_y - 80  # 80px saugi paraštė (padding)
-    
-    font_size = 90 # Pradinis, didžiausias leistinas šriftas
+    # Dinaminis šrifto dydžio skaičiavimas
+    available_height = url_y - logo_bottom_y - 80 
+    font_size = 90 
     lines = []
     
     while font_size > 20:
@@ -112,7 +118,6 @@ def main():
         test_lines = []
         current_line = ""
         
-        # Teksto laužymas į eilutes šiam šrifto dydžiui
         for word in words:
             test_line = f"{current_line} {word}".strip()
             bbox = draw.textbbox((0, 0), test_line, font=font_title)
@@ -125,17 +130,16 @@ def main():
                 current_line = word
         if current_line: test_lines.append(current_line)
         
-        # Tikriname, ar visos eilutės telpa į vertikalią erdvę
         line_spacing = font_size * 1.3
         total_text_height = len(test_lines) * line_spacing
         
         if total_text_height <= available_height:
             lines = test_lines
-            break # Radome tinkamą dydį!
+            break 
             
-        font_size -= 5 # Jei netelpa, mažiname šriftą 5 pikseliais ir bandome vėl
+        font_size -= 5 
 
-    # Teksto piešimas centre tarp logotipo ir adreso
+    # Teksto piešimas centre
     start_y = logo_bottom_y + 40 + (available_height - total_text_height) / 2
     
     for line in lines:
