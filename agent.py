@@ -2,6 +2,7 @@ import os
 import re
 import sys
 import html
+import time
 import feedparser
 import urllib.request
 from PIL import Image, ImageDraw, ImageFont, ImageOps
@@ -18,7 +19,13 @@ FONT_TITLE_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 FONT_SUB_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
 def main():
-    feed = feedparser.parse(RSS_URL)
+    # 1. ANTI-CACHE GUDYRBĖ: Prisistatome kaip tikra naršyklė
+    feedparser.USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    
+    # 2. ANTI-CACHE GUDRYBĖ: Pridedame unikalų laiko kodą, kad gautume pačią naujausią RSS versiją
+    dynamic_url = f"{RSS_URL}&nocache={int(time.time())}"
+    
+    feed = feedparser.parse(dynamic_url)
     if not feed.entries:
         print("RSS srautas tuščias.")
         return
@@ -53,7 +60,10 @@ def main():
 
     if image_url:
         try:
-            urllib.request.urlretrieve(image_url, IMAGE_FILE)
+            # Nuotraukos atsisiuntimui taip pat pridedame naršyklės antraštę
+            req = urllib.request.Request(image_url, headers={'User-Agent': feedparser.USER_AGENT})
+            with urllib.request.urlopen(req) as response, open(IMAGE_FILE, 'wb') as out_file:
+                out_file.write(response.read())
         except Exception as e:
             print(f"Nepavyko atsisiųsti nuotraukos: {e}")
 
@@ -76,7 +86,7 @@ def main():
     center_x = 1440 if has_image else 960
     max_text_width = 820 if has_image else 1700
 
-    # Logotipo ir jo fono piešimas
+    # Logotipo piešimas su baltu fonu
     logo_bottom_y = 100
     if os.path.exists(LOGO_FILE):
         try:
@@ -85,18 +95,15 @@ def main():
             logo_x = center_x - (logo.width // 2)
             logo_y = 80
             
-            # Sukuriame baltą foną su užapvalintais kampais po logotipu
             padding_x = 30
             padding_y = 20
             bg_box = [logo_x - padding_x, logo_y - padding_y, logo_x + logo.width + padding_x, logo_y + logo.height + padding_y]
             draw.rounded_rectangle(bg_box, radius=15, fill=(255, 255, 255))
-            
-            # Uždėdami logotipą, panaudojame jį patį kaip kaukę, kad išsaugotume skaidrumą
             image_canvas.paste(logo, (logo_x, logo_y), logo)
             
             logo_bottom_y = logo_y + logo.height + padding_y
-        except Exception as e:
-            print(f"Klaida įkeliant logotipą: {e}")
+        except:
+            pass
 
     if not os.path.exists(FONT_TITLE_FILE):
         sys.exit(1)
@@ -139,7 +146,6 @@ def main():
             
         font_size -= 5 
 
-    # Teksto piešimas centre
     start_y = logo_bottom_y + 40 + (available_height - total_text_height) / 2
     
     for line in lines:
@@ -149,7 +155,6 @@ def main():
     frame_path = "temp_frame.png"
     image_canvas.save(frame_path)
 
-    print("Generuojamas video failas...")
     clip = ImageClip(frame_path).set_duration(10)
     clip.write_videofile(VIDEO_FILE, fps=24, codec="libx264", audio=False)
 
