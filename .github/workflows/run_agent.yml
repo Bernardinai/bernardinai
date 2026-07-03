@@ -1,0 +1,41 @@
+name: Bernardinai Video Agent
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'  # Ši taisyklė paleidžia agentą kas 30 minučių
+  workflow_dispatch:        # Ši eilutė leis mums paleisti agentą rankiniu būdu testavimui
+
+permissions:
+  contents: write           # Labai svarbu: leidžia agentui įrašyti video atgal į repozitoriją
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 1. Atsisiunčiami repozitorijos failai
+      uses: actions/checkout@v4
+
+    - name: 2. Paruošiama Python aplinka
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: 3. Įrašomos programai reikalingos bibliotekos
+      run: |
+        python -m pip install --upgrade pip
+        pip install feedparser Pillow moviepy
+
+    - name: 4. Paleidžiamas agentas video kūrimui
+      run: python agent.py
+
+    - name: 5. Išsaugomas naujas video ir atnaujinama atmintis
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        
+        # Pridedame pakeitimus
+        git add last_article.txt bernardinai.mp4
+        
+        # Patikriname, ar buvo sukurtas naujas video. Jei naujo straipsnio nebuvo, nieko nedarome.
+        git diff --staged --quiet || (git commit -m "Automatinis bernardinai.mp4 atnaujinimas" && git push)
