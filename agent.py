@@ -20,7 +20,7 @@ FONT_SUB_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
 def main():
     # 1. ANTI-CACHE GUDYRBĖ: Prisistatome kaip tikra naršyklė
-    feedparser.USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    feedparser.USER_AGENT = "BernardinaiVideoBot/1.0"
     
     # 2. ANTI-CACHE GUDRYBĖ: Pridedame unikalų laiko kodą, kad gautume pačią naujausią RSS versiją
     dynamic_url = f"{RSS_URL}&nocache={int(time.time())}"
@@ -61,7 +61,7 @@ def main():
     if image_url:
         try:
             # Nuotraukos atsisiuntimui taip pat pridedame naršyklės antraštę
-            req = urllib.request.Request(image_url, headers={'User-Agent': feedparser.USER_AGENT})
+            req = urllib.request.Request(image_url, headers={'User-Agent': 'BernardinaiVideoBot/1.0'})
             with urllib.request.urlopen(req) as response, open(IMAGE_FILE, 'wb') as out_file:
                 out_file.write(response.read())
         except Exception as e:
