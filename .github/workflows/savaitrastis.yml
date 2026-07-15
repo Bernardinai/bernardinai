@@ -2,9 +2,10 @@ name: Savaitrascio Generatorius
 
 on:
   schedule:
-    # 18:00 UTC laiku lygu 21:00 Lietuvos vasaros laiku
-    - cron: '0 18 * * 5'
-  workflow_dispatch: # Leidžia paleisti rankiniu būdu
+    # 05:00 UTC laiku = 08:00 Lietuvos vasaros laiku (šeštadienį)
+    # Žiemos laiku tai bus 07:00 val. ryto.
+    - cron: '0 5 * * 6'
+  workflow_dispatch: # Ši eilutė palieka galimybę paleisti skriptą ir rankiniu būdu
 
 permissions:
   contents: write
