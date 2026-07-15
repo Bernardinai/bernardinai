@@ -35,83 +35,82 @@ matyti_url = set()
 pagrindiniai_straipsniai = []
 kiti_straipsniai = []
 
-# --- A ETAPAS: Pagrindiniai straipsniai (su nuotraukomis) iš MailerLite srauto ---
+def apdoroti_straipsni(entry):
+    link = getattr(entry, 'link', '#')
+    if link in matyti_url:
+        return None
+        
+    try:
+        pub_date = datetime.datetime(*entry.published_parsed[:6])
+        if pub_date < one_week_ago: return None
+        data_lt = f"{pub_date.year} m. {menesiai[pub_date.month - 1]} {pub_date.day} d."
+    except:
+        data_lt = "Data nežinoma"
+
+    # Šaltinio paieška (vietoje automatinio įkėlėjo)
+    saltinis = "Bernardinai.lt"
+    if hasattr(entry, 'source') and hasattr(entry.source, 'title'):
+        saltinis = entry.source.title
+
+    aprasymas = getattr(entry, 'description', '')
+    
+    tituline_nuotrauka = ""
+    paveikslelis = re.search(r'<img[^>]+src="([^">]+)"', aprasymas)
+    if paveikslelis:
+        tituline_nuotrauka = paveikslelis.group(1)
+
+    pilnas_tekstas = entry.content[0].value if (hasattr(entry, 'content') and len(entry.content) > 0) else aprasymas
+    
+    # Pašaliname nuotraukas ir jų nereikalingas antraštes (captions), kad nepersidengtų su tekstu
+    pilnas_tekstas = re.sub(r'<img[^>]*>', '', pilnas_tekstas)
+    pilnas_tekstas = re.sub(r'<figcaption[^>]*>.*?</figcaption>', '', pilnas_tekstas, flags=re.IGNORECASE | re.DOTALL)
+    pilnas_tekstas = re.sub(r'<p[^>]*class="[^"]*caption[^"]*"[^>]*>.*?</p>', '', pilnas_tekstas, flags=re.IGNORECASE | re.DOTALL)
+    pilnas_tekstas = re.sub(r'<div[^>]*class="[^"]*caption[^"]*"[^>]*>.*?</div>', '', pilnas_tekstas, flags=re.IGNORECASE | re.DOTALL)
+
+    # Jei šaltinis įrašytas teksto gale (pvz. "Šaltinis: BNS"), bandome jį ištraukti
+    saltinis_match = re.search(r'(?:<p>)?\s*(?:<strong>)?\s*Šaltinis\s*(?:</strong>)?\s*:\s*([^<]+)', pilnas_tekstas, re.IGNORECASE)
+    if saltinis_match:
+        saltinis = saltinis_match.group(1).strip()
+        pilnas_tekstas = pilnas_tekstas.replace(saltinis_match.group(0), '') # Išvalome, kad nesidubliuotų
+
+    # Formatuojame antraštes
+    pilnas_tekstas = re.sub(r'<h([1-6])\b[^>]*>', r'<div class="heading-\1">', pilnas_tekstas, flags=re.IGNORECASE)
+    pilnas_tekstas = re.sub(r'</h[1-6]>', r'</div>', pilnas_tekstas, flags=re.IGNORECASE)
+    
+    # Pridedame Drop cap pirmąjai raidei
+    pilnas_tekstas = re.sub(r'(<p[^>]*>)\s*([A-ZĄČĘĖĮŠŲŪŽa-ząčęėįšųūž])', r'\1<span class="drop-cap">\2</span>', pilnas_tekstas, count=1)
+
+    matyti_url.add(link)
+    return {
+        'title': entry.title.replace('\n', ' ').replace('\r', '').strip(),
+        'source': saltinis,
+        'date': data_lt,
+        'image': tituline_nuotrauka,
+        'content': pilnas_tekstas,
+        'link': link
+    }
+
+# --- A ETAPAS: Pagrindiniai straipsniai ---
 print("Nuskaitomas pagrindinis (MailerLite) RSS srautas...")
 for puslapis in range(1, 10):
     rss_url = f"https://www.bernardinai.lt/?feed=mailerlite-kultura&paged={puslapis}"
     feed = feedparser.parse(rss_url)
     if not feed.entries: break
-
     for entry in feed.entries:
-        link = getattr(entry, 'link', '#')
-        if link in matyti_url: continue
-            
-        try:
-            pub_date = datetime.datetime(*entry.published_parsed[:6])
-            if pub_date < one_week_ago: continue
-            data_lt = f"{pub_date.year} m. {menesiai[pub_date.month - 1]} {pub_date.day} d."
-        except:
-            data_lt = "Data nežinoma"
+        straipsnis = apdoroti_straipsni(entry)
+        if straipsnis:
+            pagrindiniai_straipsniai.append(straipsnis)
 
-        autorius = getattr(entry, 'author', 'Bernardinai.lt')
-        aprasymas = getattr(entry, 'description', '')
-        
-        tituline_nuotrauka = ""
-        paveikslelis = re.search(r'<img[^>]+src="([^">]+)"', aprasymas)
-        if paveikslelis:
-            tituline_nuotrauka = paveikslelis.group(1)
-
-        pilnas_tekstas = entry.content[0].value if (hasattr(entry, 'content') and len(entry.content) > 0) else aprasymas
-        pilnas_tekstas = re.sub(r'<img[^>]*>', '', pilnas_tekstas)
-        pilnas_tekstas = re.sub(r'<h([1-6])\b[^>]*>', r'<div class="heading-\1">', pilnas_tekstas, flags=re.IGNORECASE)
-        pilnas_tekstas = re.sub(r'</h[1-6]>', r'</div>', pilnas_tekstas, flags=re.IGNORECASE)
-        pilnas_tekstas = re.sub(r'(<p[^>]*>)\s*([A-ZĄČĘĖĮŠŲŪŽa-ząčęėįšųūž])', r'\1<span class="drop-cap">\2</span>', pilnas_tekstas, count=1)
-
-        pagrindiniai_straipsniai.append({
-            'title': entry.title.replace('\n', ' ').replace('\r', '').strip(),
-            'author': autorius,
-            'date': data_lt,
-            'image': tituline_nuotrauka,
-            'content': pilnas_tekstas,
-            'link': link
-        })
-        matyti_url.add(link)
-
-# --- B ETAPAS: Papildomi straipsniai (be nuotraukų) iš bendro Kultūros srauto ---
+# --- B ETAPAS: Papildomi straipsniai ---
 print("Nuskaitomas papildomas Kultūros rubrikos RSS srautas...")
 for puslapis in range(1, 10):
     rss_url = f"https://www.bernardinai.lt/kategorija/kultura/feed/?paged={puslapis}"
     feed = feedparser.parse(rss_url)
     if not feed.entries: break
-
     for entry in feed.entries:
-        link = getattr(entry, 'link', '#')
-        if link in matyti_url: continue # Praleidžiame, jei jau įdėtas kaip pagrindinis!
-            
-        try:
-            pub_date = datetime.datetime(*entry.published_parsed[:6])
-            if pub_date < one_week_ago: continue
-            data_lt = f"{pub_date.year} m. {menesiai[pub_date.month - 1]} {pub_date.day} d."
-        except:
-            data_lt = "Data nežinoma"
-
-        autorius = getattr(entry, 'author', 'Bernardinai.lt')
-        aprasymas = getattr(entry, 'description', '')
-        
-        pilnas_tekstas = entry.content[0].value if (hasattr(entry, 'content') and len(entry.content) > 0) else aprasymas
-        pilnas_tekstas = re.sub(r'<img[^>]*>', '', pilnas_tekstas)
-        pilnas_tekstas = re.sub(r'<h([1-6])\b[^>]*>', r'<div class="heading-\1">', pilnas_tekstas, flags=re.IGNORECASE)
-        pilnas_tekstas = re.sub(r'</h[1-6]>', r'</div>', pilnas_tekstas, flags=re.IGNORECASE)
-        pilnas_tekstas = re.sub(r'(<p[^>]*>)\s*([A-ZĄČĘĖĮŠŲŪŽa-ząčęėįšųūž])', r'\1<span class="drop-cap">\2</span>', pilnas_tekstas, count=1)
-
-        kiti_straipsniai.append({
-            'title': entry.title.replace('\n', ' ').replace('\r', '').strip(),
-            'author': autorius,
-            'date': data_lt,
-            'content': pilnas_tekstas,
-            'link': link
-        })
-        matyti_url.add(link)
+        straipsnis = apdoroti_straipsni(entry)
+        if straipsnis:
+            kiti_straipsniai.append(straipsnis)
 
 print(f"Iš viso atrinkta: {len(pagrindiniai_straipsniai)} pagrindinių ir {len(kiti_straipsniai)} papildomų straipsnių.")
 
@@ -249,7 +248,7 @@ for i, straipsnis in enumerate(pagrindiniai_straipsniai):
     <div class="article-page" id="pagrindinis_{i}">
         <div class="article-header">
             <div class="article-title">{straipsnis['title']}</div>
-            <div class="article-meta">Autorius: <strong>{straipsnis['author']}</strong> &nbsp;|&nbsp; Publikuota: {straipsnis['date']}</div>
+            <div class="article-meta">Šaltinis: <strong>{straipsnis['source']}</strong> &nbsp;|&nbsp; Publikuota: {straipsnis['date']}</div>
         </div>
         {f'<img src="{straipsnis["image"]}" class="article-image">' if straipsnis['image'] else ''}
         <div class="article-columns">
@@ -261,14 +260,15 @@ for i, straipsnis in enumerate(pagrindiniai_straipsniai):
     </div>
     """
 
-# KITI SAVAITĖS STRAIPSNIAI (BE NUOTRAUKŲ)
+# KITI SAVAITĖS STRAIPSNIAI (DABAR JAU SU NUOTRAUKOMIS)
 for i, straipsnis in enumerate(kiti_straipsniai):
     html_kodas += f"""
     <div class="article-page" id="kitas_{i}">
         <div class="article-header">
             <div class="article-title">{straipsnis['title']}</div>
-            <div class="article-meta">Autorius: <strong>{straipsnis['author']}</strong> &nbsp;|&nbsp; Publikuota: {straipsnis['date']}</div>
+            <div class="article-meta">Šaltinis: <strong>{straipsnis['source']}</strong> &nbsp;|&nbsp; Publikuota: {straipsnis['date']}</div>
         </div>
+        {f'<img src="{straipsnis["image"]}" class="article-image">' if straipsnis['image'] else ''}
         <div class="article-columns">
             {straipsnis['content']}
         </div>
