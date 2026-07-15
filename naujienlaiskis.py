@@ -21,6 +21,7 @@ menesiai = ["sausio", "vasario", "kovo", "balandžio", "gegužės", "birželio",
             "liepos", "rugpjūčio", "rugsėjo", "spalio", "lapkričio", "gruodžio"]
 
 leidinio_data = f"{today.year} m. {menesiai[today.month - 1]} {today.day} d."
+leidinio_numeris = "1"
 savaites_laikotarpis = f"{one_week_ago.year} m. {menesiai[one_week_ago.month - 1]} {one_week_ago.day} d. – {today.year} m. {menesiai[today.month - 1]} {today.day} d."
 
 # === IŠMANIOJI LEIDINIO NUMERIO LOGIKA ===
@@ -370,12 +371,12 @@ except Exception as e:
     print(f"Nepavyko išsaugoti numerio failo: {e}")
 
 # ==========================================
-# 5. MAILERLITE JUODRAŠČIO KŪRIMAS
+# 5. MAILERLITE LAIŠKO KŪRIMAS IR IŠSIUNTIMAS
 # ==========================================
 api_key = os.environ.get('MAILERLITE_API_KEY')
 
 if api_key:
-    print("Kuriamas MailerLite juodraštis...")
+    print("Kuriamas ir siunčiamas MailerLite laiškas...")
     pdf_url = "https://raw.githubusercontent.com/Bernardinai/bernardinai/main/kulturos_savaitrastis_zurnalas.pdf"
     
     email_html = f"""<!DOCTYPE html>
@@ -399,7 +400,6 @@ if api_key:
         <h2 style="color: #7a2222; border-bottom: 2px solid #7a2222; padding-bottom: 10px; margin-top: 40px;">Šios savaitės svarbiausi</h2>
     """
     
-    # Sujungiame abu sąrašus į vieną, kad laiške būtų rodomi visi tekstai
     visi_straipsniai_laiskui = pagrindiniai_straipsniai + kiti_straipsniai
 
     for straipsnis in visi_straipsniai_laiskui:
@@ -423,13 +423,15 @@ if api_key:
 </html>
 """
     
+    # 1. ŽINGSNIS: Sukuriame kampaniją
     payload_campaign = {
         "type": "regular",
         "groups": [103032162],
         "subject": f"Kultūros savaitraštis | {leidinio_data}",
         "from": "naujienlaiskis@bernardinai.lt",
         "from_name": "Bernardinai.lt kultūros savaitraštis",
-        "language": "lt"
+        "language": "lt",
+        "google_analytics": f"kulturos-savaitrastis-{today_str}"
     }
     
     req_campaign = urllib.request.Request('https://api.mailerlite.com/api/v2/campaigns', 
@@ -446,6 +448,7 @@ if api_key:
             print(f">>> Kampanija sukurta. ID: {campaign_id}")
             
             if campaign_id:
+                # 2. ŽINGSNIS: Įkeliame turinį
                 payload_content = {
                     "html": email_html,
                     "plain": f"Naujausias Kultūros savaitraštis jau paruoštas!\n\nAtsisiųsti PDF galite čia: {pdf_url}\n\nPeržiūrėti naršyklėje: {{$url}}\nAtsisakyti naujienlaiškio: {{$unsubscribe}}"
@@ -461,7 +464,20 @@ if api_key:
                                      method='PUT')
                 
                 with urllib.request.urlopen(req_content) as resp_content:
-                    print(">>> MailerLite juodraščio turinys sėkmingai įkeltas! Galite jį peržiūrėti paskyroje.")
+                    print(">>> MailerLite laiško turinys įkeltas!")
+                    
+                # 3. ŽINGSNIS: Išsiunčiame kampaniją (į Outbox)
+                req_send = urllib.request.Request(f'https://api.mailerlite.com/api/v2/campaigns/{campaign_id}/actions/send', 
+                                     data=json.dumps({}).encode('utf-8'),
+                                     headers={
+                                         'X-MailerLite-ApiKey': api_key,
+                                         'Content-Type': 'application/json',
+                                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
+                                     },
+                                     method='POST')
+                
+                with urllib.request.urlopen(req_send) as resp_send:
+                    print(">>> MailerLite kampanija sėkmingai perkelta į OUTBOX (pradėta siųsti)!")
                     
     except urllib.error.HTTPError as e:
         error_msg = e.read().decode('utf-8')
