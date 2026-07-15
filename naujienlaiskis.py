@@ -378,7 +378,6 @@ if api_key:
     print("Kuriamas MailerLite juodraštis...")
     pdf_url = "https://raw.githubusercontent.com/Bernardinai/bernardinai/main/kulturos_savaitrastis_zurnalas.pdf"
     
-    # Sukuriame pilną HTML el. laiškui su privalomomis HTML žymomis
     email_html = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -400,12 +399,15 @@ if api_key:
         <h2 style="color: #7a2222; border-bottom: 2px solid #7a2222; padding-bottom: 10px; margin-top: 40px;">Šios savaitės svarbiausi</h2>
     """
     
-    for straipsnis in pagrindiniai_straipsniai:
+    # Sujungiame abu sąrašus į vieną, kad laiške būtų rodomi visi tekstai
+    visi_straipsniai_laiskui = pagrindiniai_straipsniai + kiti_straipsniai
+
+    for straipsnis in visi_straipsniai_laiskui:
         email_html += f"""
         <div style="margin-bottom: 40px; padding-bottom: 20px; border-bottom: 1px solid #eee;">
             {f'<img src="{straipsnis["image"]}" style="width: 100%; max-width: 600px; border-radius: 8px; margin-bottom: 15px;">' if straipsnis['image'] else ''}
             <h3 style="margin: 0 0 10px 0;"><a href="{straipsnis['link']}" style="color: #111; text-decoration: none; font-size: 20px;">{straipsnis['title']}</a></h3>
-            <div style="color: #7a2222; font-size: 12px; font-weight: bold; margin-bottom: 10px; text-transform: uppercase;">Šaltinis: Bernardinai.lt | Publikuota: {straipsnis['date']}</div>
+            <div style="color: #7a2222; font-size: 12px; font-weight: bold; margin-bottom: 10px; text-transform: uppercase;">Publikuota: {straipsnis['date']}</div>
             <p style="color: #555; font-size: 15px; line-height: 1.5; margin: 0;">{straipsnis['excerpt']}</p>
         </div>
         """
