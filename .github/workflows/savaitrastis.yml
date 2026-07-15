@@ -32,6 +32,8 @@ jobs:
           pip install feedparser weasyprint
 
       - name: 5. Generuojamas savaitraštis
+        env:
+          MAILERLITE_API_KEY: ${{ secrets.MAILERLITE_API_KEY }}
         run: python naujienlaiskis.py
 
       - name: 6. Išsaugomas PDF atgal į repozitoriją
