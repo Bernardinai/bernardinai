@@ -7,6 +7,8 @@ from datetime import timedelta
 import os
 import re
 import base64
+import json
+import urllib.request
 
 # ==========================================
 # 1. KONFIGŪRACIJA IR DATOS
@@ -54,6 +56,10 @@ def apdoroti_straipsni(entry, is_main=True):
     autorius = getattr(entry, 'author', 'Bernardinai.lt')
     aprasymas = getattr(entry, 'description', '')
     
+    # Sukuriame švarią tekstinę įžangą naujienlaiškio el. laiškui
+    izanga_clean = re.sub('<[^<]+>', '', aprasymas)
+    izanga_clean = izanga_clean[:250] + '...' if len(izanga_clean) > 250 else izanga_clean
+    
     tituline_nuotrauka = ""
     paveikslelis = re.search(r'<img[^>]+src="([^">]+)"', aprasymas)
     if paveikslelis:
@@ -84,6 +90,7 @@ def apdoroti_straipsni(entry, is_main=True):
         'date': data_lt,
         'pub_date_obj': pub_date_obj,
         'image': tituline_nuotrauka,
+        'excerpt': izanga_clean,
         'content': pilnas_tekstas,
         'link': link
     }
@@ -126,58 +133,26 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
         }}
     }}
     @page cover {{ margin: 0; @bottom-center {{ content: none; }} }}
-    
-    html, body {{ margin: 0; padding: 0; }} /* Pašalina baltas juosteles aplink viršelį */
+    html, body {{ margin: 0; padding: 0; }}
     body {{ font-family: 'Georgia', serif; color: #222; line-height: 1.6; font-size: 11pt; }}
     
-    /* VIRŠELIS */
     .cover-page {{ page: cover; position: relative; width: 100%; height: 100vh; background-color: #1a1a1a; overflow: hidden; box-sizing: border-box; }}
     .bg-img {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }}
     .overlay {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(26, 26, 26, 0.70); z-index: 2; }}
     .cover-content {{ position: absolute; top: 48%; left: 50%; transform: translate(-50%, -50%); text-align: center; width: 85%; color: white; z-index: 3; }}
-    
-    /* LOGOTIPAS ŠVIESIAME RĖMELYJE */
-    .logo-container {{
-        background-color: rgba(255, 255, 255, 0.9);
-        padding: 15px 30px;
-        border-radius: 12px;
-        display: inline-block;
-        margin-bottom: 20px;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-    }}
+    .logo-container {{ background-color: rgba(255, 255, 255, 0.9); padding: 15px 30px; border-radius: 12px; display: inline-block; margin-bottom: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }}
     .logo-main {{ max-width: 220px; display: block; }}
-    
     .main-title {{ font-size: 42pt; font-weight: bold; margin-bottom: 15px; letter-spacing: 2px; text-transform: uppercase; line-height: 1.1; }}
     .sub-title {{ font-size: 16pt; color: #E0E0E0; margin-bottom: 30px; font-style: italic; }}
     .divider {{ width: 80px; height: 3px; background-color: #d32f2f; margin: 0 auto 30px auto; }}
     .meta-box {{ display: inline-block; background-color: rgba(0,0,0,0.5); padding: 15px 30px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); }}
-    
-    /* Griežtai vienoje eilutėje laikomas tekstas */
     .meta {{ font-size: 9.5pt; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.8; white-space: nowrap; }}
     
-    /* ISSN IR BRŪKŠNINIO KODO VIETA */
-    .barcode-box {{
-        position: absolute;
-        bottom: 15mm;
-        right: 15mm;
-        background-color: #FFF;
-        padding: 10px 15px;
-        border-radius: 4px;
-        z-index: 10;
-        text-align: center;
-        color: #000;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-    }}
+    .barcode-box {{ position: absolute; bottom: 15mm; right: 15mm; background-color: #FFF; padding: 10px 15px; border-radius: 4px; z-index: 10; text-align: center; color: #000; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }}
     .barcode-text {{ font-size: 8pt; font-family: monospace; letter-spacing: 1px; font-weight: bold; margin-bottom: 3px; }}
-    .barcode-lines {{
-        width: 120px;
-        height: 35px;
-        background: repeating-linear-gradient(to right, #000 0, #000 2px, #fff 2px, #fff 4px, #000 4px, #000 5px, #fff 5px, #fff 8px, #000 8px, #000 11px, #fff 11px, #fff 13px, #000 13px, #000 15px, #fff 15px, #fff 18px);
-        margin: 5px auto;
-    }}
+    .barcode-lines {{ width: 120px; height: 35px; background: repeating-linear-gradient(to right, #000 0, #000 2px, #fff 2px, #fff 4px, #000 4px, #000 5px, #fff 5px, #fff 8px, #000 8px, #000 11px, #fff 11px, #fff 13px, #000 13px, #000 15px, #fff 15px, #fff 18px); margin: 5px auto; }}
     .barcode-numbers {{ font-size: 7pt; font-family: monospace; letter-spacing: 3px; }}
     
-    /* TURINYS */
     .toc-page {{ page-break-before: always; padding-top: 10mm; }}
     .toc-title {{ text-align: center; font-size: 24pt; color: #7a2222; text-transform: uppercase; margin-bottom: 30px; margin-top: 20px; }}
     .toc-list {{ list-style: none; padding: 0; margin: 0; }}
@@ -187,38 +162,31 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     .intro-box {{ background-color: #f9f9f9; padding: 30px; border-radius: 8px; border: 1px solid #eaeaea; margin: 50px auto; max-width: 500px; text-align: center; }}
     .btn-support {{ display: inline-block; background-color: #d32f2f; color: #FFF; padding: 10px 20px; text-decoration: none; font-weight: bold; border-radius: 4px; margin-top: 15px; }}
     
-    /* STRAIPSNIAI BENDRAI */
     .article-columns {{ column-count: 2; column-gap: 30px; text-align: justify; }}
     .drop-cap {{ font-size: 350%; float: left; margin: 4px 8px 0 0; color: #7a2222; line-height: 0.8; font-weight: bold; }}
     .article-columns p {{ margin-top: 0; margin-bottom: 15px; widows: 2; orphans: 2; }}
     
-    /* PAGRINDINIAI STRAIPSNIAI */
     .article-page {{ page-break-before: always; padding-top: 10mm; }}
     .article-header {{ text-align: center; margin-bottom: 20px; }}
     .article-title {{ font-size: 26pt; font-weight: bold; margin-bottom: 10px; line-height: 1.2; }}
     .article-meta {{ font-size: 10pt; color: #666; text-transform: uppercase; border-bottom: 2px solid #eee; padding-bottom: 10px; }}
     .article-image {{ width: 100%; max-height: 400px; object-fit: cover; margin-bottom: 25px; border-radius: 4px; }}
     
-    /* KITI SAVAITĖS STRAIPSNIAI */
     .other-articles-section {{ page-break-before: always; padding-top: 10mm; }}
     .other-section-header {{ text-align: center; font-size: 24pt; font-weight: bold; color: #7a2222; text-transform: uppercase; margin-bottom: 30px; border-bottom: 2px solid #7a2222; padding-bottom: 10px; }}
     .other-article {{ margin-bottom: 40px; }}
     .other-article-title {{ font-size: 16pt; font-weight: bold; margin-bottom: 8px; line-height: 1.2; break-after: avoid; page-break-after: avoid; color: #111; }}
     .other-article-meta {{ font-size: 9pt; color: #666; text-transform: uppercase; border-bottom: 1px solid #eee; padding-bottom: 8px; margin-bottom: 15px; break-after: avoid; page-break-after: avoid; }}
-    
     .other-article img {{ width: 100% !important; height: auto !important; max-height: 300px; object-fit: cover; border-radius: 4px; margin-bottom: 5px; }}
     .other-article figure, .other-article .wp-caption {{ margin: 0 0 15px 0; width: 100% !important; break-inside: avoid; page-break-inside: avoid; }}
     .other-article figcaption, .other-article .wp-caption-text {{ font-size: 8pt; color: #777; font-style: italic; text-align: center; line-height: 1.3; margin-top: 5px; }}
     .back-to-toc {{ text-align: right; margin-top: 15px; font-size: 9pt; }}
     .back-to-toc a {{ color: #7a2222; text-decoration: none; }}
     
-    /* KONTAKTAI */
     .contacts-page {{ page-break-before: always; padding-top: 10mm; }}
 </style>
 </head>
 <body>
-
-    <!-- VIRŠELIS -->
     <div class="cover-page">
         {f'<img src="{cover_bg_image}" class="bg-img">' if cover_bg_image else ''}
         <div class="overlay"></div>
@@ -237,8 +205,6 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
                 </div>
             </div>
         </div>
-        
-        <!-- ISSN ir BRŪKŠNINIS KODAS -->
         <div class="barcode-box">
             <div class="barcode-text">ISSN [XXXX-XXXX]</div>
             <div class="barcode-lines"></div>
@@ -246,10 +212,8 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
         </div>
     </div>
 
-    <!-- TURINYS -->
     <div class="toc-page" id="turinys">
         <div class="toc-title">Turinys</div>
-        
         <div class="toc-section-title">Savaitės svarbiausi</div>
         <ul class="toc-list">
 """
@@ -276,7 +240,6 @@ html_kodas += f"""
     </div>
 """
 
-# ----------------- PAGRINDINIAI STRAIPSNIAI -----------------
 for i, straipsnis in enumerate(pagrindiniai_straipsniai):
     html_kodas += f"""
     <div class="article-page" id="pagrindinis_{i}">
@@ -292,7 +255,6 @@ for i, straipsnis in enumerate(pagrindiniai_straipsniai):
     </div>
     """
 
-# ----------------- KITI SAVAITĖS STRAIPSNIAI -----------------
 if kiti_straipsniai:
     html_kodas += """
     <div class="other-articles-section">
@@ -313,7 +275,6 @@ if kiti_straipsniai:
     </div>
     """
 
-# ----------------- KONTAKTAI -----------------
 html_kodas += """
     <div class="contacts-page">
         <h1 style="border-bottom: 2px solid #7a2222; padding-bottom: 10px; margin-bottom: 20px;">Redakcija ir kontaktai</h1>
@@ -364,9 +325,6 @@ html_kodas += """
 </body></html>
 """
 
-# ==========================================
-# 4. PDF GENERAVIMAS
-# ==========================================
 pdf_failas = 'kulturos_savaitrastis_zurnalas.pdf'
 print("Generuojamas modernus PDF failas (WeasyPrint)...")
 try:
@@ -376,3 +334,75 @@ except Exception as e:
     print(">>> GRIEŽTA KLAIDA GENERUOJANT PDF:")
     traceback.print_exc()
     sys.exit(1)
+
+# ==========================================
+# 5. MAILERLITE JUODRAŠČIO KŪRIMAS
+# ==========================================
+api_key = os.environ.get('MAILERLITE_API_KEY')
+
+if api_key:
+    print("Kuriamas MailerLite juodraštis...")
+    
+    # Ši nuoroda ves tiesiai į jūsų „GitHub“ saugykloje gulintį naujausią PDF failą
+    pdf_url = "https://raw.githubusercontent.com/Bernardinai/bernardinai/main/kulturos_savaitrastis_zurnalas.pdf"
+    
+    # Formuojame el. laiško HTML
+    email_html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 20px;">
+        <div style="text-align: center; margin-bottom: 30px;">
+            <img src="https://raw.githubusercontent.com/Bernardinai/bernardinai/main/logo.png" alt="Bernardinai.lt" style="max-width: 200px;">
+        </div>
+        <h1 style="text-align: center; color: #111; font-size: 24px;">Naujausias Kultūros savaitraštis jau paruoštas!</h1>
+        <p style="text-align: center; color: #555; font-size: 16px;">Sveiki, paruošėme jums {leidinio_data} geriausių kultūros tekstų rinkinį žurnalo formatu.</p>
+        
+        <div style="text-align: center; margin: 40px 0;">
+            <a href="{pdf_url}" style="background-color: #d32f2f; color: #ffffff; padding: 15px 30px; text-decoration: none; font-size: 18px; font-weight: bold; border-radius: 5px; display: inline-block;">Atsisiųsti PDF savaitraštį</a>
+        </div>
+        
+        <h2 style="color: #7a2222; border-bottom: 2px solid #7a2222; padding-bottom: 10px; margin-top: 40px;">Šios savaitės svarbiausi</h2>
+    """
+    
+    # Pridedame pagrindinių straipsnių ištraukas (nuotrauka, pavadinimas, data, tekstas)
+    for straipsnis in pagrindiniai_straipsniai:
+        email_html += f"""
+        <div style="margin-bottom: 40px; padding-bottom: 20px; border-bottom: 1px solid #eee;">
+            {f'<img src="{straipsnis["image"]}" style="width: 100%; max-width: 600px; border-radius: 8px; margin-bottom: 15px;">' if straipsnis['image'] else ''}
+            <h3 style="margin: 0 0 10px 0;"><a href="{straipsnis['link']}" style="color: #111; text-decoration: none; font-size: 20px;">{straipsnis['title']}</a></h3>
+            <div style="color: #7a2222; font-size: 12px; font-weight: bold; margin-bottom: 10px; text-transform: uppercase;">Šaltinis: Bernardinai.lt | Publikuota: {straipsnis['date']}</div>
+            <p style="color: #555; font-size: 15px; line-height: 1.5; margin: 0;">{straipsnis['excerpt']}</p>
+        </div>
+        """
+        
+    email_html += """
+        <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; font-size: 12px; color: #999;">
+            Išsiųsta naudojant Bernardinai.lt automatizaciją.<br><br>
+            <a href="{$unsubscribe}" style="color: #999; text-decoration: underline;">Atsisakyti naujienlaiškio</a>
+        </div>
+    </div>
+    """
+    
+    # MailerLite API konfigūracija
+    payload = {
+        "type": "regular",
+        "groups": [103032162],
+        "subject": f"Kultūros savaitraštis | {leidinio_data}",
+        "from": "naujienlaiskis@bernardinai.lt",
+        "from_name": "Bernardinai.lt kultūros savaitraštis",
+        "language": "lt",
+        "html": email_html
+    }
+    
+    req = urllib.request.Request('https://api.mailerlite.com/api/v2/campaigns', 
+                                 data=json.dumps(payload).encode('utf-8'),
+                                 headers={
+                                     'X-MailerLite-ApiKey': api_key,
+                                     'Content-Type': 'application/json'
+                                 })
+    try:
+        with urllib.request.urlopen(req) as response:
+            print(">>> MailerLite juodraštis sėkmingai sukurtas!")
+    except Exception as e:
+        print(f">>> KLAIDA kuriant MailerLite juodraštį: {e}")
+
+else:
+    print(">>> MAILERLITE_API_KEY nerastas aplinkoje. Juodraštis nekuriamas.")
