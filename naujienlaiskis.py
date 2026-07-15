@@ -126,35 +126,39 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
         }}
     }}
     @page cover {{ margin: 0; @bottom-center {{ content: none; }} }}
+    
+    html, body {{ margin: 0; padding: 0; }} /* Pašalina baltas juosteles aplink viršelį */
     body {{ font-family: 'Georgia', serif; color: #222; line-height: 1.6; font-size: 11pt; }}
     
     /* VIRŠELIS */
-    .cover-page {{ page: cover; position: relative; width: 210mm; height: 297mm; background-color: #1a1a1a; overflow: hidden; }}
+    .cover-page {{ page: cover; position: relative; width: 100%; height: 100vh; background-color: #1a1a1a; overflow: hidden; box-sizing: border-box; }}
     .bg-img {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }}
     .overlay {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(26, 26, 26, 0.70); z-index: 2; }}
-    .cover-content {{ position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; width: 80%; color: white; z-index: 3; }}
+    .cover-content {{ position: absolute; top: 48%; left: 50%; transform: translate(-50%, -50%); text-align: center; width: 85%; color: white; z-index: 3; }}
     
     /* LOGOTIPAS ŠVIESIAME RĖMELYJE */
     .logo-container {{
         background-color: rgba(255, 255, 255, 0.9);
-        padding: 20px 35px;
-        border-radius: 15px;
+        padding: 15px 30px;
+        border-radius: 12px;
         display: inline-block;
-        margin-bottom: 25px;
+        margin-bottom: 20px;
         box-shadow: 0 5px 15px rgba(0,0,0,0.3);
     }}
-    .logo-main {{ max-width: 250px; display: block; }}
+    .logo-main {{ max-width: 220px; display: block; }}
     
-    .main-title {{ font-size: 45pt; font-weight: bold; margin-bottom: 20px; letter-spacing: 2px; text-transform: uppercase; line-height: 1.1; }}
-    .sub-title {{ font-size: 18pt; color: #E0E0E0; margin-bottom: 40px; font-style: italic; }}
-    .divider {{ width: 100px; height: 3px; background-color: #d32f2f; margin: 0 auto 40px auto; }}
-    .meta-box {{ display: inline-block; background-color: rgba(0,0,0,0.5); padding: 20px 40px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); }}
-    .meta {{ font-size: 12pt; text-transform: uppercase; letter-spacing: 1px; line-height: 1.8; }}
+    .main-title {{ font-size: 42pt; font-weight: bold; margin-bottom: 15px; letter-spacing: 2px; text-transform: uppercase; line-height: 1.1; }}
+    .sub-title {{ font-size: 16pt; color: #E0E0E0; margin-bottom: 30px; font-style: italic; }}
+    .divider {{ width: 80px; height: 3px; background-color: #d32f2f; margin: 0 auto 30px auto; }}
+    .meta-box {{ display: inline-block; background-color: rgba(0,0,0,0.5); padding: 15px 30px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); }}
+    
+    /* Griežtai vienoje eilutėje laikomas tekstas */
+    .meta {{ font-size: 9.5pt; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.8; white-space: nowrap; }}
     
     /* ISSN IR BRŪKŠNINIO KODO VIETA */
     .barcode-box {{
         position: absolute;
-        bottom: 20mm;
+        bottom: 15mm;
         right: 15mm;
         background-color: #FFF;
         padding: 10px 15px;
@@ -174,7 +178,7 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     .barcode-numbers {{ font-size: 7pt; font-family: monospace; letter-spacing: 3px; }}
     
     /* TURINYS */
-    .toc-page {{ page-break-before: always; }}
+    .toc-page {{ page-break-before: always; padding-top: 10mm; }}
     .toc-title {{ text-align: center; font-size: 24pt; color: #7a2222; text-transform: uppercase; margin-bottom: 30px; margin-top: 20px; }}
     .toc-list {{ list-style: none; padding: 0; margin: 0; }}
     .toc-item {{ border-bottom: 1px dotted #ccc; margin-bottom: 15px; padding-bottom: 5px; overflow: hidden; }}
@@ -189,14 +193,14 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     .article-columns p {{ margin-top: 0; margin-bottom: 15px; widows: 2; orphans: 2; }}
     
     /* PAGRINDINIAI STRAIPSNIAI */
-    .article-page {{ page-break-before: always; }}
+    .article-page {{ page-break-before: always; padding-top: 10mm; }}
     .article-header {{ text-align: center; margin-bottom: 20px; }}
     .article-title {{ font-size: 26pt; font-weight: bold; margin-bottom: 10px; line-height: 1.2; }}
     .article-meta {{ font-size: 10pt; color: #666; text-transform: uppercase; border-bottom: 2px solid #eee; padding-bottom: 10px; }}
     .article-image {{ width: 100%; max-height: 400px; object-fit: cover; margin-bottom: 25px; border-radius: 4px; }}
     
     /* KITI SAVAITĖS STRAIPSNIAI */
-    .other-articles-section {{ page-break-before: always; }}
+    .other-articles-section {{ page-break-before: always; padding-top: 10mm; }}
     .other-section-header {{ text-align: center; font-size: 24pt; font-weight: bold; color: #7a2222; text-transform: uppercase; margin-bottom: 30px; border-bottom: 2px solid #7a2222; padding-bottom: 10px; }}
     .other-article {{ margin-bottom: 40px; }}
     .other-article-title {{ font-size: 16pt; font-weight: bold; margin-bottom: 8px; line-height: 1.2; break-after: avoid; page-break-after: avoid; color: #111; }}
@@ -209,11 +213,12 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     .back-to-toc a {{ color: #7a2222; text-decoration: none; }}
     
     /* KONTAKTAI */
-    .contacts-page {{ page-break-before: always; }}
+    .contacts-page {{ page-break-before: always; padding-top: 10mm; }}
 </style>
 </head>
 <body>
 
+    <!-- VIRŠELIS -->
     <div class="cover-page">
         {f'<img src="{cover_bg_image}" class="bg-img">' if cover_bg_image else ''}
         <div class="overlay"></div>
@@ -233,6 +238,7 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
             </div>
         </div>
         
+        <!-- ISSN ir BRŪKŠNINIS KODAS -->
         <div class="barcode-box">
             <div class="barcode-text">ISSN [XXXX-XXXX]</div>
             <div class="barcode-lines"></div>
@@ -240,6 +246,7 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
         </div>
     </div>
 
+    <!-- TURINYS -->
     <div class="toc-page" id="turinys">
         <div class="toc-title">Turinys</div>
         
