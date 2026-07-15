@@ -31,7 +31,7 @@ jobs:
     - name: 4. Paleidžiamas agentas video kūrimui
       run: python agent.py
 
-- name: 5. Išsaugomas naujas video ir atnaujinama atmintis
+    - name: 5. Išsaugomas naujas video ir atnaujinama atmintis
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
