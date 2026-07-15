@@ -57,7 +57,6 @@ def apdoroti_straipsni(entry, is_main=True):
     autorius = getattr(entry, 'author', 'Bernardinai.lt')
     aprasymas = getattr(entry, 'description', '')
     
-    # Sukuriame švarią tekstinę įžangą naujienlaiškio el. laiškui
     izanga_clean = re.sub('<[^<]+>', '', aprasymas)
     izanga_clean = izanga_clean[:250] + '...' if len(izanga_clean) > 250 else izanga_clean
     
@@ -392,7 +391,8 @@ if api_key:
                                  data=json.dumps(payload_campaign).encode('utf-8'),
                                  headers={
                                      'X-MailerLite-ApiKey': api_key,
-                                     'Content-Type': 'application/json'
+                                     'Content-Type': 'application/json',
+                                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
                                  })
     try:
         with urllib.request.urlopen(req_campaign) as response:
@@ -411,7 +411,8 @@ if api_key:
                                      data=json.dumps(payload_content).encode('utf-8'),
                                      headers={
                                          'X-MailerLite-ApiKey': api_key,
-                                         'Content-Type': 'application/json'
+                                         'Content-Type': 'application/json',
+                                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
                                      },
                                      method='PUT')
                 
