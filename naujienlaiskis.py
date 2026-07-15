@@ -10,6 +10,20 @@ import base64
 import json
 import urllib.request
 import urllib.error
+from zoneinfo import ZoneInfo
+
+# ==========================================
+# 0. IŠMANI LAIKO PATIKRA (VASAROS/ŽIEMOS LAIKUI)
+# ==========================================
+event_name = os.environ.get('EVENT_NAME', '')
+
+# Laiką tikriname tik tada, kai veikia automatika (cron grafikas),
+# kad leistume jums testuoti skriptą rankiniu būdu bet kuriuo metu!
+if event_name == 'schedule':
+    lt_time = datetime.datetime.now(ZoneInfo("Europe/Vilnius"))
+    if lt_time.hour != 8:
+        print(f"Dabar Lietuvoje yra {lt_time.hour} val. Agentas ilsisi, nes laiškus siunčiame tik lygiai 08:00 val.")
+        sys.exit(0) # Tyliai baigiame darbą ir nepykdome GitHub'o
 
 # ==========================================
 # 1. KONFIGŪRACIJA IR DATOS
@@ -21,7 +35,6 @@ menesiai = ["sausio", "vasario", "kovo", "balandžio", "gegužės", "birželio",
             "liepos", "rugpjūčio", "rugsėjo", "spalio", "lapkričio", "gruodžio"]
 
 leidinio_data = f"{today.year} m. {menesiai[today.month - 1]} {today.day} d."
-leidinio_numeris = "1"
 savaites_laikotarpis = f"{one_week_ago.year} m. {menesiai[one_week_ago.month - 1]} {one_week_ago.day} d. – {today.year} m. {menesiai[today.month - 1]} {today.day} d."
 
 # === IŠMANIOJI LEIDINIO NUMERIO LOGIKA ===
@@ -423,7 +436,6 @@ if api_key:
 </html>
 """
     
-    # 1. ŽINGSNIS: Sukuriame kampaniją
     payload_campaign = {
         "type": "regular",
         "groups": [103032162],
@@ -448,7 +460,6 @@ if api_key:
             print(f">>> Kampanija sukurta. ID: {campaign_id}")
             
             if campaign_id:
-                # 2. ŽINGSNIS: Įkeliame turinį
                 payload_content = {
                     "html": email_html,
                     "plain": f"Naujausias Kultūros savaitraštis jau paruoštas!\n\nAtsisiųsti PDF galite čia: {pdf_url}\n\nPeržiūrėti naršyklėje: {{$url}}\nAtsisakyti naujienlaiškio: {{$unsubscribe}}"
@@ -466,7 +477,6 @@ if api_key:
                 with urllib.request.urlopen(req_content) as resp_content:
                     print(">>> MailerLite laiško turinys įkeltas!")
                     
-                # 3. ŽINGSNIS: Išsiunčiame kampaniją (į Outbox)
                 req_send = urllib.request.Request(f'https://api.mailerlite.com/api/v2/campaigns/{campaign_id}/actions/send', 
                                      data=json.dumps({}).encode('utf-8'),
                                      headers={
