@@ -400,11 +400,11 @@ if api_key:
             campaign_id = campaign_data.get('id')
             print(f">>> Kampanija sukurta. ID: {campaign_id}")
             
-            # 2. ŽINGSNIS: Įkeliame HTML turinį į kampaniją
+     # 2. ŽINGSNIS: Įkeliame HTML turinį į kampaniją
             if campaign_id:
                 payload_content = {
                     "html": email_html,
-                    "plain": "Jei norite skaityti šį laišką, prašome įjungti HTML palaikymą el. pašto programoje."
+                    "plain": f"Naujausias Kultūros savaitraštis jau paruoštas!\n\nAtsisiųsti PDF galite čia: {pdf_url}\n\nJei norite matyti pilną laišką su nuotraukomis, prašome įjungti HTML palaikymą savo el. pašto programoje.\n\nAtsisakyti naujienlaiškio: {{$unsubscribe}}"
                 }
                 
                 req_content = urllib.request.Request(f'https://api.mailerlite.com/api/v2/campaigns/{campaign_id}/content', 
