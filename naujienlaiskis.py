@@ -21,14 +21,14 @@ leidinio_numeris = "1"
 savaites_laikotarpis = f"{one_week_ago.year} m. {menesiai[one_week_ago.month - 1]} {one_week_ago.day} d. – {today.year} m. {menesiai[today.month - 1]} {today.day} d."
 
 logo_src = ""
-logo_failas = 'bernardinailt-main-RGB.png' 
+logo_failas = 'logo.png' 
 if os.path.exists(logo_failas):
     with open(logo_failas, "rb") as image_file:
         encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
         logo_src = f"data:image/png;base64,{encoded_string}"
 
 # ==========================================
-# 2. RSS SRAUTŲ NUSKAITYMAS
+# 2. RSS SRAUTŲ NUSKAITYMAS IR RŪŠIAVIMAS
 # ==========================================
 matyti_url = set()
 pagrindiniai_straipsniai = []
@@ -39,10 +39,11 @@ def apdoroti_straipsni(entry, is_main=True):
     if link in matyti_url: return None
         
     try:
-        pub_date = datetime.datetime(*entry.published_parsed[:6])
-        if pub_date < one_week_ago: return None
-        data_lt = f"{pub_date.year} m. {menesiai[pub_date.month - 1]} {pub_date.day} d."
+        pub_date_obj = datetime.datetime(*entry.published_parsed[:6])
+        if pub_date_obj < one_week_ago: return None
+        data_lt = f"{pub_date_obj.year} m. {menesiai[pub_date_obj.month - 1]} {pub_date_obj.day} d."
     except:
+        pub_date_obj = datetime.datetime.now()
         data_lt = "Data nežinoma"
 
     saltinis = "Bernardinai.lt"
@@ -61,13 +62,11 @@ def apdoroti_straipsni(entry, is_main=True):
     pilnas_tekstas = entry.content[0].value if (hasattr(entry, 'content') and len(entry.content) > 0) else aprasymas
     
     if is_main:
-        # Svarbiausiems straipsniams iškerpame nuotraukas, nes dedame vieną didelę viršuje
         pilnas_tekstas = re.sub(r'<img[^>]*>', '', pilnas_tekstas)
         pilnas_tekstas = re.sub(r'<figcaption[^>]*>.*?</figcaption>', '', pilnas_tekstas, flags=re.IGNORECASE | re.DOTALL)
         pilnas_tekstas = re.sub(r'<p[^>]*class="[^"]*caption[^"]*"[^>]*>.*?</p>', '', pilnas_tekstas, flags=re.IGNORECASE | re.DOTALL)
         pilnas_tekstas = re.sub(r'<div[^>]*class="[^"]*caption[^"]*"[^>]*>.*?</div>', '', pilnas_tekstas, flags=re.IGNORECASE | re.DOTALL)
     else:
-        # Kitiems tekstams ieškome šaltinio teksto pabaigoje
         saltinis_match = re.search(r'(?:<p>)?\s*(?:<strong>)?\s*Šaltinis\s*(?:</strong>)?\s*:\s*([^<]+)', pilnas_tekstas, re.IGNORECASE)
         if saltinis_match:
             saltinis = saltinis_match.group(1).strip()
@@ -83,12 +82,12 @@ def apdoroti_straipsni(entry, is_main=True):
         'author': autorius,
         'source': saltinis,
         'date': data_lt,
+        'pub_date_obj': pub_date_obj,
         'image': tituline_nuotrauka,
         'content': pilnas_tekstas,
         'link': link
     }
 
-# --- A ETAPAS: Pagrindiniai straipsniai ---
 print("Nuskaitomas pagrindinis RSS srautas...")
 for puslapis in range(1, 10):
     rss_url = f"https://www.bernardinai.lt/?feed=mailerlite-kultura&paged={puslapis}"
@@ -98,7 +97,6 @@ for puslapis in range(1, 10):
         straipsnis = apdoroti_straipsni(entry, is_main=True)
         if straipsnis: pagrindiniai_straipsniai.append(straipsnis)
 
-# --- B ETAPAS: Kiti kultūros straipsniai ---
 print("Nuskaitomas papildomas Kultūros RSS srautas...")
 for puslapis in range(1, 10):
     rss_url = f"https://www.bernardinai.lt/kategorija/kultura/feed/?paged={puslapis}"
@@ -108,12 +106,15 @@ for puslapis in range(1, 10):
         straipsnis = apdoroti_straipsni(entry, is_main=False)
         if straipsnis: kiti_straipsniai.append(straipsnis)
 
+pagrindiniai_straipsniai.sort(key=lambda x: x['pub_date_obj'])
+kiti_straipsniai.sort(key=lambda x: x['pub_date_obj'])
+
 print(f"Iš viso atrinkta: {len(pagrindiniai_straipsniai)} pagrindinių ir {len(kiti_straipsniai)} papildomų straipsnių.")
 
 # ==========================================
 # 3. HTML DIZAINAS IR GENERAVIMAS
 # ==========================================
-cover_bg_image = pagrindiniai_straipsniai[0]['image'] if len(pagrindiniai_straipsniai) > 0 and pagrindiniai_straipsniai[0]['image'] else ""
+cover_bg_image = pagrindiniai_straipsniai[-1]['image'] if len(pagrindiniai_straipsniai) > 0 and pagrindiniai_straipsniai[-1]['image'] else "" 
 
 html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>
@@ -130,14 +131,47 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     /* VIRŠELIS */
     .cover-page {{ page: cover; position: relative; width: 210mm; height: 297mm; background-color: #1a1a1a; overflow: hidden; }}
     .bg-img {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }}
-    .overlay {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(26, 26, 26, 0.75); z-index: 2; }}
+    .overlay {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(26, 26, 26, 0.70); z-index: 2; }}
     .cover-content {{ position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; width: 80%; color: white; z-index: 3; }}
-    .logo-main {{ max-width: 300px; margin-bottom: 50px; filter: brightness(0) invert(1); }}
+    
+    /* LOGOTIPAS ŠVIESIAME RĖMELYJE */
+    .logo-container {{
+        background-color: rgba(255, 255, 255, 0.9);
+        padding: 20px 35px;
+        border-radius: 15px;
+        display: inline-block;
+        margin-bottom: 25px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    }}
+    .logo-main {{ max-width: 250px; display: block; }}
+    
     .main-title {{ font-size: 45pt; font-weight: bold; margin-bottom: 20px; letter-spacing: 2px; text-transform: uppercase; line-height: 1.1; }}
     .sub-title {{ font-size: 18pt; color: #E0E0E0; margin-bottom: 40px; font-style: italic; }}
     .divider {{ width: 100px; height: 3px; background-color: #d32f2f; margin: 0 auto 40px auto; }}
-    .meta-box {{ display: inline-block; background-color: rgba(0,0,0,0.4); padding: 20px 40px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); }}
+    .meta-box {{ display: inline-block; background-color: rgba(0,0,0,0.5); padding: 20px 40px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); }}
     .meta {{ font-size: 12pt; text-transform: uppercase; letter-spacing: 1px; line-height: 1.8; }}
+    
+    /* ISSN IR BRŪKŠNINIO KODO VIETA */
+    .barcode-box {{
+        position: absolute;
+        bottom: 20mm;
+        right: 15mm;
+        background-color: #FFF;
+        padding: 10px 15px;
+        border-radius: 4px;
+        z-index: 10;
+        text-align: center;
+        color: #000;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    }}
+    .barcode-text {{ font-size: 8pt; font-family: monospace; letter-spacing: 1px; font-weight: bold; margin-bottom: 3px; }}
+    .barcode-lines {{
+        width: 120px;
+        height: 35px;
+        background: repeating-linear-gradient(to right, #000 0, #000 2px, #fff 2px, #fff 4px, #000 4px, #000 5px, #fff 5px, #fff 8px, #000 8px, #000 11px, #fff 11px, #fff 13px, #000 13px, #000 15px, #fff 15px, #fff 18px);
+        margin: 5px auto;
+    }}
+    .barcode-numbers {{ font-size: 7pt; font-family: monospace; letter-spacing: 3px; }}
     
     /* TURINYS */
     .toc-page {{ page-break-before: always; }}
@@ -161,14 +195,13 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     .article-meta {{ font-size: 10pt; color: #666; text-transform: uppercase; border-bottom: 2px solid #eee; padding-bottom: 10px; }}
     .article-image {{ width: 100%; max-height: 400px; object-fit: cover; margin-bottom: 25px; border-radius: 4px; }}
     
-    /* KITI SAVAITĖS STRAIPSNIAI (stulpeliuose) */
+    /* KITI SAVAITĖS STRAIPSNIAI */
     .other-articles-section {{ page-break-before: always; }}
     .other-section-header {{ text-align: center; font-size: 24pt; font-weight: bold; color: #7a2222; text-transform: uppercase; margin-bottom: 30px; border-bottom: 2px solid #7a2222; padding-bottom: 10px; }}
     .other-article {{ margin-bottom: 40px; }}
     .other-article-title {{ font-size: 16pt; font-weight: bold; margin-bottom: 8px; line-height: 1.2; break-after: avoid; page-break-after: avoid; color: #111; }}
     .other-article-meta {{ font-size: 9pt; color: #666; text-transform: uppercase; border-bottom: 1px solid #eee; padding-bottom: 8px; margin-bottom: 15px; break-after: avoid; page-break-after: avoid; }}
     
-    /* Saugus nuotraukų atvaizdavimas stulpeliuose */
     .other-article img {{ width: 100% !important; height: auto !important; max-height: 300px; object-fit: cover; border-radius: 4px; margin-bottom: 5px; }}
     .other-article figure, .other-article .wp-caption {{ margin: 0 0 15px 0; width: 100% !important; break-inside: avoid; page-break-inside: avoid; }}
     .other-article figcaption, .other-article .wp-caption-text {{ font-size: 8pt; color: #777; font-style: italic; text-align: center; line-height: 1.3; margin-top: 5px; }}
@@ -181,12 +214,13 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
 </head>
 <body>
 
-    <!-- VIRŠELIS -->
     <div class="cover-page">
         {f'<img src="{cover_bg_image}" class="bg-img">' if cover_bg_image else ''}
         <div class="overlay"></div>
         <div class="cover-content">
-            {f'<img src="{logo_src}" class="logo-main">' if logo_src else ''}
+            <div class="logo-container">
+                {f'<img src="{logo_src}" class="logo-main">' if logo_src else '<div style="color:#111; font-size: 24pt; font-weight:bold;">Bernardinai.lt</div>'}
+            </div>
             <div class="main-title">Kultūros<br>Savaitraštis</div>
             <div class="sub-title">Geriausi savaitės tekstai vienoje vietoje</div>
             <div class="divider"></div>
@@ -198,9 +232,14 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
                 </div>
             </div>
         </div>
+        
+        <div class="barcode-box">
+            <div class="barcode-text">ISSN [XXXX-XXXX]</div>
+            <div class="barcode-lines"></div>
+            <div class="barcode-numbers">9 77XXXX XXXXXX</div>
+        </div>
     </div>
 
-    <!-- TURINYS -->
     <div class="toc-page" id="turinys">
         <div class="toc-title">Turinys</div>
         
@@ -257,7 +296,7 @@ if kiti_straipsniai:
         html_kodas += f"""
             <div class="other-article" id="kitas_{i}">
                 <div class="other-article-title">{straipsnis['title']}</div>
-                <div class="other-article-meta">Autorius: <strong>{straipsnis['author']}</strong> &nbsp;|&nbsp; Šaltinis: <strong>{straipsnis['source']}</strong> &nbsp;|&nbsp; Publikuota: {straipsnis['date']}</div>
+                <div class="other-article-meta">Šaltinis: <strong>{straipsnis['source']}</strong> &nbsp;|&nbsp; Publikuota: {straipsnis['date']}</div>
                 {straipsnis['content']}
                 <div class="back-to-toc"><a href="#turinys">↑ Grįžti į turinį</a></div>
             </div>
