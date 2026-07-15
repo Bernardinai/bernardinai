@@ -2,10 +2,9 @@ name: Savaitrascio Generatorius
 
 on:
   schedule:
-    # 05:00 UTC laiku = 08:00 Lietuvos vasaros laiku (šeštadienį)
-    # Žiemos laiku tai bus 07:00 val. ryto.
-    - cron: '0 5 * * 6'
-  workflow_dispatch: # Ši eilutė palieka galimybę paleisti skriptą ir rankiniu būdu
+    # Žadiname agentą ir 05:00, ir 06:00 UTC (šeštadienį)
+    - cron: '0 5,6 * * 6'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -30,11 +29,12 @@ jobs:
       - name: 4. Diegiamos Python bibliotekos
         run: |
           python -m pip install --upgrade pip
-          pip install feedparser weasyprint
+          pip install feedparser weasyprint tzdata
 
       - name: 5. Generuojamas savaitraštis
         env:
           MAILERLITE_API_KEY: ${{ secrets.MAILERLITE_API_KEY }}
+          EVENT_NAME: ${{ github.event_name }}
         run: python naujienlaiskis.py
 
       - name: 6. Išsaugomas PDF atgal į repozitoriją
