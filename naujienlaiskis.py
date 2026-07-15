@@ -15,14 +15,40 @@ import urllib.error
 # 1. KONFIGŪRACIJA IR DATOS
 # ==========================================
 today = datetime.datetime.now()
+today_str = today.strftime("%Y-%m-%d")
 one_week_ago = today - timedelta(days=7)
 menesiai = ["sausio", "vasario", "kovo", "balandžio", "gegužės", "birželio", 
             "liepos", "rugpjūčio", "rugsėjo", "spalio", "lapkričio", "gruodžio"]
 
 leidinio_data = f"{today.year} m. {menesiai[today.month - 1]} {today.day} d."
-leidinio_numeris = "1"
 savaites_laikotarpis = f"{one_week_ago.year} m. {menesiai[one_week_ago.month - 1]} {one_week_ago.day} d. – {today.year} m. {menesiai[today.month - 1]} {today.day} d."
 
+# === IŠMANIOJI LEIDINIO NUMERIO LOGIKA ===
+tracker_file = 'leidinio_numeris.txt'
+current_year = today.year
+numeris = 1
+last_run_date = ""
+
+if os.path.exists(tracker_file):
+    try:
+        with open(tracker_file, 'r', encoding='utf-8') as f:
+            data = f.read().strip().split('/')
+            saved_year = int(data[0])
+            saved_num = int(data[1])
+            if len(data) == 3:
+                last_run_date = data[2]
+            
+            if saved_year == current_year:
+                if last_run_date == today_str:
+                    numeris = saved_num # Tą pačią dieną numerio nedidiname
+                else:
+                    numeris = saved_num + 1
+    except Exception:
+        pass
+
+leidinio_numeris = f"{current_year}/{numeris}"
+
+# Logotipas
 logo_src = ""
 logo_failas = 'logo.png' 
 if os.path.exists(logo_failas):
@@ -336,6 +362,15 @@ except Exception as e:
     sys.exit(1)
 
 # ==========================================
+# 4. IŠSAUGOME LEIDINIO NUMERĮ KITAM KARTUI
+# ==========================================
+try:
+    with open(tracker_file, 'w', encoding='utf-8') as f:
+        f.write(f"{current_year}/{numeris}/{today_str}")
+except Exception as e:
+    print(f"Nepavyko išsaugoti numerio failo: {e}")
+
+# ==========================================
 # 5. MAILERLITE JUODRAŠČIO KŪRIMAS
 # ==========================================
 api_key = os.environ.get('MAILERLITE_API_KEY')
@@ -372,12 +407,12 @@ if api_key:
     email_html += """
         <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; font-size: 12px; color: #999;">
             Išsiųsta naudojant Bernardinai.lt automatizaciją.<br><br>
+            <a href="{$url}" style="color: #999; text-decoration: underline;">Peržiūrėti naršyklėje</a> &nbsp;|&nbsp; 
             <a href="{$unsubscribe}" style="color: #999; text-decoration: underline;">Atsisakyti naujienlaiškio</a>
         </div>
     </div>
     """
     
-    # 1. ŽINGSNIS: Sukuriame kampaniją (tuščią rėmą)
     payload_campaign = {
         "type": "regular",
         "groups": [103032162],
@@ -400,11 +435,10 @@ if api_key:
             campaign_id = campaign_data.get('id')
             print(f">>> Kampanija sukurta. ID: {campaign_id}")
             
-     # 2. ŽINGSNIS: Įkeliame HTML turinį į kampaniją
             if campaign_id:
                 payload_content = {
                     "html": email_html,
-                    "plain": f"Naujausias Kultūros savaitraštis jau paruoštas!\n\nAtsisiųsti PDF galite čia: {pdf_url}\n\nJei norite matyti pilną laišką su nuotraukomis, prašome įjungti HTML palaikymą savo el. pašto programoje.\n\nAtsisakyti naujienlaiškio: {{$unsubscribe}}"
+                    "plain": f"Naujausias Kultūros savaitraštis jau paruoštas!\n\nAtsisiųsti PDF galite čia: {pdf_url}\n\nPeržiūrėti naršyklėje: {{$url}}\nAtsisakyti naujienlaiškio: {{$unsubscribe}}"
                 }
                 
                 req_content = urllib.request.Request(f'https://api.mailerlite.com/api/v2/campaigns/{campaign_id}/content', 
