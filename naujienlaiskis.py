@@ -65,6 +65,9 @@ for puslapis in range(1, 21):
         pilnas_tekstas = re.sub(r'<h([1-6])\b[^>]*>', r'<div class="heading-\1">', pilnas_tekstas, flags=re.IGNORECASE)
         pilnas_tekstas = re.sub(r'</h[1-6]>', r'</div>', pilnas_tekstas, flags=re.IGNORECASE)
 
+        # ANTI-LŪŽIMO GUDRYBĖ: Saugus pirmosios raidės (Drop cap) paruošimas
+        pilnas_tekstas = re.sub(r'(<p[^>]*>)\s*([A-ZĄČĘĖĮŠŲŪŽa-ząčęėįšųūž])', r'\1<span class="drop-cap">\2</span>', pilnas_tekstas, count=1)
+
         atrinkti_straipsniai.append({
             'title': entry.title.replace('\n', ' ').replace('\r', '').strip(),
             'author': autorius,
@@ -86,7 +89,6 @@ cover_bg_image = atrinkti_straipsniai[0]['image'] if len(atrinkti_straipsniai) >
 
 html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>
-    /* Modernus PDF laužymas naudojant @page */
     @page {{
         size: A4;
         margin: 20mm 15mm 20mm 15mm;
@@ -97,14 +99,13 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
             color: #7a2222;
         }}
     }}
-    /* Išjungiame paraštes ir puslapių numerius tik viršeliui */
     @page cover {{ margin: 0; @bottom-center {{ content: none; }} }}
     
     body {{ font-family: 'Georgia', serif; color: #222; line-height: 1.6; font-size: 11pt; }}
     
-    /* 1. VIRŠELIS (Garantuotas proporcijų išlaikymas) */
+    /* 1. VIRŠELIS */
     .cover-page {{
-        page: cover; /* Priskiriame viršelio taisyklę */
+        page: cover; 
         position: relative;
         width: 100%; height: 100vh;
         background-image: url('{cover_bg_image}');
@@ -140,12 +141,11 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     .intro-box {{ background-color: #f9f9f9; padding: 30px; border-radius: 8px; border: 1px solid #eaeaea; margin: 50px auto; max-width: 500px; text-align: center; }}
     .btn-support {{ display: inline-block; background-color: #d32f2f; color: #FFF; padding: 10px 20px; text-decoration: none; font-weight: bold; border-radius: 4px; margin-top: 15px; }}
     
-    /* 3. STRAIPSNIAI (Dviejų stulpelių magija!) */
+    /* 3. STRAIPSNIAI */
     .article-page {{ page-break-before: always; }}
     .article-header {{ text-align: center; margin-bottom: 20px; }}
     .article-title {{ font-size: 26pt; font-weight: bold; margin-bottom: 10px; line-height: 1.2; }}
     .article-meta {{ font-size: 10pt; color: #666; text-transform: uppercase; border-bottom: 2px solid #eee; padding-bottom: 10px; }}
-    
     .article-image {{ width: 100%; max-height: 400px; object-fit: cover; margin-bottom: 25px; border-radius: 4px; }}
     
     .article-columns {{
@@ -154,8 +154,8 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
         text-align: justify;
     }}
     
-    /* Graži pirmoji raidė (Drop cap) */
-    .article-columns p:first-of-type::first-letter {{
+    /* Saugus pirmosios raidės stilius */
+    .drop-cap {{
         font-size: 350%; float: left; margin: 4px 8px 0 0; color: #7a2222; line-height: 0.8; font-weight: bold;
     }}
     .article-columns p {{ margin-top: 0; margin-bottom: 15px; widows: 2; orphans: 2; }}
@@ -190,7 +190,6 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
         <ul class="toc-list">
 """
 
-# Generuojame turinio sąrašą su vidinėmis nuorodomis
 for i, straipsnis in enumerate(atrinkti_straipsniai):
     html_kodas += f"""
             <li class="toc-item">
@@ -207,7 +206,6 @@ html_kodas += f"""
     </div>
 """
 
-# Generuojame straipsnius
 for i, straipsnis in enumerate(atrinkti_straipsniai):
     html_kodas += f"""
     <div class="article-page" id="article_{i}">
@@ -225,7 +223,6 @@ for i, straipsnis in enumerate(atrinkti_straipsniai):
     </div>
     """
 
-# Redakcijos kontaktai
 html_kodas += """
     <div class="contacts-page">
         <h1 style="border-bottom: 2px solid #7a2222; padding-bottom: 10px;">Redakcija ir kontaktai</h1>
@@ -261,5 +258,5 @@ try:
     print(f">>> Sėkmingai sukurta: {pdf_failas}")
 except Exception as e:
     print(">>> GRIEŽTA KLAIDA GENERUOJANT PDF:")
-    traceback.print_exc() # Ši komanda atspausdins visą vidinę klaidos anatomiją
-    sys.exit(1) # Iškart sustabdo procesą, kad Github Actions parodytų raudoną klaidos kryžiuką
+    traceback.print_exc()
+    sys.exit(1)
