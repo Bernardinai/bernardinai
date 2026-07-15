@@ -40,7 +40,7 @@ if os.path.exists(tracker_file):
             
             if saved_year == current_year:
                 if last_run_date == today_str:
-                    numeris = saved_num # Tą pačią dieną numerio nedidiname
+                    numeris = saved_num
                 else:
                     numeris = saved_num + 1
     except Exception:
@@ -48,7 +48,6 @@ if os.path.exists(tracker_file):
 
 leidinio_numeris = f"{current_year}/{numeris}"
 
-# Logotipas
 logo_src = ""
 logo_failas = 'logo.png' 
 if os.path.exists(logo_failas):
@@ -379,7 +378,14 @@ if api_key:
     print("Kuriamas MailerLite juodraštis...")
     pdf_url = "https://raw.githubusercontent.com/Bernardinai/bernardinai/main/kulturos_savaitrastis_zurnalas.pdf"
     
-    email_html = f"""
+    # Sukuriame pilną HTML el. laiškui su privalomomis HTML žymomis
+    email_html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Kultūros savaitraštis</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f4f4f4;">
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 20px;">
         <div style="text-align: center; margin-bottom: 30px;">
             <img src="https://raw.githubusercontent.com/Bernardinai/bernardinai/main/logo.png" alt="Bernardinai.lt" style="max-width: 200px;">
@@ -411,7 +417,9 @@ if api_key:
             <a href="{$unsubscribe}" style="color: #999; text-decoration: underline;">Atsisakyti naujienlaiškio</a>
         </div>
     </div>
-    """
+</body>
+</html>
+"""
     
     payload_campaign = {
         "type": "regular",
