@@ -65,7 +65,7 @@ for puslapis in range(1, 21):
         pilnas_tekstas = re.sub(r'<h([1-6])\b[^>]*>', r'<div class="heading-\1">', pilnas_tekstas, flags=re.IGNORECASE)
         pilnas_tekstas = re.sub(r'</h[1-6]>', r'</div>', pilnas_tekstas, flags=re.IGNORECASE)
 
-        # ANTI-LŪŽIMO GUDRYBĖ: Saugus pirmosios raidės (Drop cap) paruošimas
+        # Saugus pirmosios raidės (Drop cap) paruošimas
         pilnas_tekstas = re.sub(r'(<p[^>]*>)\s*([A-ZĄČĘĖĮŠŲŪŽa-ząčęėįšųūž])', r'\1<span class="drop-cap">\2</span>', pilnas_tekstas, count=1)
 
         atrinkti_straipsniai.append({
@@ -83,7 +83,7 @@ for puslapis in range(1, 21):
 print(f"Iš viso atrinkta straipsnių: {len(atrinkti_straipsniai)}")
 
 # ==========================================
-# 3. HTML IR DIZAINO GENERAVIMAS (WEASYPRINT)
+# 3. HTML IR DIZAINO GENERAVIMAS
 # ==========================================
 cover_bg_image = atrinkti_straipsniai[0]['image'] if len(atrinkti_straipsniai) > 0 and atrinkti_straipsniai[0]['image'] else ""
 
@@ -103,19 +103,24 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     
     body {{ font-family: 'Georgia', serif; color: #222; line-height: 1.6; font-size: 11pt; }}
     
-    /* 1. VIRŠELIS */
+    /* 1. VIRŠELIS (Naudojama tikra nuotrauka dėl vietinių PDF programų palaikymo) */
     .cover-page {{
         page: cover; 
         position: relative;
-        width: 100%; height: 100vh;
-        background-image: url('{cover_bg_image}');
-        background-size: cover;
-        background-position: center;
+        width: 210mm; height: 297mm; /* Griežtas A4 dydis */
         background-color: #1a1a1a;
+        overflow: hidden;
+    }}
+    .bg-img {{
+        position: absolute; top: 0; left: 0; 
+        width: 100%; height: 100%;
+        object-fit: cover; /* Garantuoja tobulą apkirpimą */
+        z-index: 1;
     }}
     .overlay {{
         position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-        background-color: rgba(26, 26, 26, 0.7);
+        background-color: rgba(26, 26, 26, 0.75);
+        z-index: 2;
     }}
     .cover-content {{
         position: absolute;
@@ -124,6 +129,7 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
         text-align: center;
         width: 80%;
         color: white;
+        z-index: 3;
     }}
     .logo-main {{ max-width: 300px; margin-bottom: 50px; filter: brightness(0) invert(1); }}
     .main-title {{ font-size: 45pt; font-weight: bold; margin-bottom: 20px; letter-spacing: 2px; text-transform: uppercase; line-height: 1.1; }}
@@ -154,21 +160,19 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
         text-align: justify;
     }}
     
-    /* Saugus pirmosios raidės stilius */
     .drop-cap {{
         font-size: 350%; float: left; margin: 4px 8px 0 0; color: #7a2222; line-height: 0.8; font-weight: bold;
     }}
     .article-columns p {{ margin-top: 0; margin-bottom: 15px; widows: 2; orphans: 2; }}
     
-    /* 4. KONTAKTAI */
-    .contacts-page {{ page-break-before: always; font-size: 10pt; }}
-    .contacts-grid {{ display: flex; justify-content: space-between; }}
-    .col {{ width: 48%; }}
+    /* 4. KONTAKTAI (Atkurta detali lentelė) */
+    .contacts-page {{ page-break-before: always; }}
 </style>
 </head>
 <body>
 
     <div class="cover-page">
+        {f'<img src="{cover_bg_image}" class="bg-img">' if cover_bg_image else ''}
         <div class="overlay"></div>
         <div class="cover-content">
             {f'<img src="{logo_src}" class="logo-main">' if logo_src else ''}
@@ -223,27 +227,55 @@ for i, straipsnis in enumerate(atrinkti_straipsniai):
     </div>
     """
 
+# DETALŪS REDAKCIJOS KONTAKTAI
 html_kodas += """
     <div class="contacts-page">
-        <h1 style="border-bottom: 2px solid #7a2222; padding-bottom: 10px;">Redakcija ir kontaktai</h1>
-        <div style="margin-bottom: 30px;">
+        <h1 style="border-bottom: 2px solid #7a2222; padding-bottom: 10px; margin-bottom: 20px;">Redakcija ir kontaktai</h1>
+        
+        <div style="font-size: 11pt; line-height: 1.6; margin-bottom: 30px; text-align: left;">
             <strong>Interneto dienraštis „Bernardinai.lt“</strong><br>
-            Leidėjas: VŠĮ BERNARDINAI.LT | Įmonės kodas: 300671187 | PVM kodas: LT100004414010<br>
-            Adresas: Maironio g. 10, LT-01124 Vilnius<br>
-            El. paštas: redakcija@bernardinai.lt
+            Veiklos pradžia – 2004 m. vasario 21 d.<br><br>
+            <strong>Leidėjas:</strong> VŠĮ BERNARDINAI.LT (Bankams pradėjus tikrinti pavadinimus, prašome naudoti šį pavadinimą).<br>
+            <strong>Įmonės kodas:</strong> 300671187<br>
+            <strong>PVM mokėtojo kodas:</strong> LT100004414010<br>
+            <strong>Sąskaitos Nr.:</strong> LT06 7044 0600 0598 4890<br>
+            AB SEB bankas, Banko kodas 70440<br><br>
+            <strong>Adresas:</strong> Maironio g. 10, LT-01124 Vilnius (Maironio g. 6-103)<br>
+            <strong>Tel:</strong> +370 673 45416<br>
+            <strong>El. paštas:</strong> redakcija@bernardinai.lt, administracija@bernardinai.lt<br>
         </div>
-        <div class="contacts-grid">
-            <div class="col">
-                <h3 style="border-bottom: 1px solid #ccc; padding-bottom: 5px;">Redakcija</h3>
-                <p><strong>Jurgita Jačėnaitė</strong> (Vyr. redaktorė)<br><strong>Austėja Zovytė</strong> (Pavaduotoja)</p>
-                <p><strong>Inga Bartulevičiūtė</strong>, <strong>Rita Bagdonaitė</strong>, <strong>Vytautas Markevičius</strong>, <strong>Austina Pakalnytė</strong>, <strong>Tomas Kemzūra</strong>, <strong>Laima Šiušaitė</strong></p>
-            </div>
-            <div class="col">
-                <h3 style="border-bottom: 1px solid #ccc; padding-bottom: 5px;">Administracija ir bendradarbiai</h3>
-                <p><strong>Juozas Ruzgys</strong> (Direktorius)<br>Reklama: reklama@bernardinai.lt</p>
-                <p>Bendradarbiai: D. Indrišionis, E. Levin, R. Baškienė, G. Zelvaras, U. Tulaitė, S. Žiugždaitė, A. Plokštytė, T. Žukas.</p>
-            </div>
-        </div>
+
+        <table width="100%" cellpadding="0" cellspacing="0" style="table-layout: fixed; font-size: 10pt;">
+            <tr>
+                <td width="50%" valign="top" style="padding-right: 20px; border-right: 1px solid #eaeaea;">
+                    <div style="font-size: 14pt; color: #111; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 5px;">Redakcija</div>
+                    <p><strong>Jurgita Jačėnaitė</strong><br>Vyr. redaktorė<br>jurga@bernardinai.lt</p>
+                    <p><strong>Austėja Zovytė</strong><br>Vyr. redaktorės pavaduotoja<br>austeja.zovyte@bernardinai.lt</p>
+                    <p><strong>Inga Bartulevičiūtė</strong><br>Visuomenės redaktorė<br>inga.bartuleviciute@bernardinai.lt</p>
+                    <p><strong>Rita Bagdonaitė</strong><br>Religijos redaktorė<br>rita.bagdonaite@bernardinai.lt</p>
+                    <p><strong>Vytautas Markevičius</strong><br>Žurnalistas<br>vytautas.markevicius@bernardinai.lt</p>
+                    <p><strong>Austina Pakalnytė</strong><br>Žurnalistė<br>austina.pakalnyte@bernardinai.lt</p>
+                    <p><strong>Tomas Kemzūra</strong><br>Žurnalistas<br>tomas.kemzura@bernardinai.lt</p>
+                    <p><strong>Laima Šiušaitė</strong><br>Kalbos redaktorė<br>laima.siusaite@bernardinai.lt</p>
+                </td>
+                <td width="50%" valign="top" style="padding-left: 20px;">
+                    <div style="font-size: 14pt; color: #111; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 5px;">Bendradarbiai</div>
+                    <p><strong>Darius Indrišionis</strong><br>Tekstų autorius</p>
+                    <p><strong>Evgenia Levin</strong><br>Fotografė<br>el@zeneka.lt</p>
+                    <p><strong>Rasa Baškienė</strong><br>Tekstų autorė<br>rasa@bernardinai.lt</p>
+                    <p><strong>Gediminas Zelvaras</strong><br>Tekstų autorius<br>gediminaszelvaras22@gmail.com</p>
+                    <p><strong>Ugnė Tulaitė</strong><br>Tekstų autorė</p>
+                    <p><strong>Saulena Žiugždaitė</strong><br>Tekstų autorė<br>saulena@bernardinai.lt</p>
+                    <p><strong>Aurelija Plokštytė</strong><br>Tekstų autorė<br>aurelija.plokstyte@bernardinai.lt</p>
+                    <p><strong>Teodoras Žukas</strong><br>Tekstų autorius<br>teodoras.zukas@gmail.com</p>
+                    
+                    <div style="font-size: 14pt; color: #111; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 20px;">Administracija</div>
+                    <p><strong>Juozas Ruzgys</strong><br>Direktorius<br>juozas.ruzgys@bernardinai.lt</p>
+                    <p><strong>Buhalterija</strong><br>buhalterija@bernardinai.lt</p>
+                    <p><strong>Reklama</strong><br>Reklamos ir straipsnių užsakymas<br>reklama@bernardinai.lt</p>
+                </td>
+            </tr>
+        </table>
     </div>
 </body></html>
 """
