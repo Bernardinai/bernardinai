@@ -1,3 +1,5 @@
+import sys
+import traceback
 import feedparser
 from weasyprint import HTML
 import datetime
@@ -258,4 +260,6 @@ try:
     HTML(string=html_kodas).write_pdf(pdf_failas)
     print(f">>> Sėkmingai sukurta: {pdf_failas}")
 except Exception as e:
-    print(f">>> Klaida generuojant PDF: {e}")
+    print(">>> GRIEŽTA KLAIDA GENERUOJANT PDF:")
+    traceback.print_exc() # Ši komanda atspausdins visą vidinę klaidos anatomiją
+    sys.exit(1) # Iškart sustabdo procesą, kad Github Actions parodytų raudoną klaidos kryžiuką
