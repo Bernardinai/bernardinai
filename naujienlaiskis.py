@@ -9,6 +9,7 @@ import re
 import base64
 import json
 import urllib.request
+import urllib.error
 
 # ==========================================
 # 1. KONFIGŪRACIJA IR DATOS
@@ -342,11 +343,8 @@ api_key = os.environ.get('MAILERLITE_API_KEY')
 
 if api_key:
     print("Kuriamas MailerLite juodraštis...")
-    
-    # Ši nuoroda ves tiesiai į jūsų „GitHub“ saugykloje gulintį naujausią PDF failą
     pdf_url = "https://raw.githubusercontent.com/Bernardinai/bernardinai/main/kulturos_savaitrastis_zurnalas.pdf"
     
-    # Formuojame el. laiško HTML
     email_html = f"""
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 20px;">
         <div style="text-align: center; margin-bottom: 30px;">
@@ -362,7 +360,6 @@ if api_key:
         <h2 style="color: #7a2222; border-bottom: 2px solid #7a2222; padding-bottom: 10px; margin-top: 40px;">Šios savaitės svarbiausi</h2>
     """
     
-    # Pridedame pagrindinių straipsnių ištraukas (nuotrauka, pavadinimas, data, tekstas)
     for straipsnis in pagrindiniai_straipsniai:
         email_html += f"""
         <div style="margin-bottom: 40px; padding-bottom: 20px; border-bottom: 1px solid #eee;">
@@ -381,28 +378,50 @@ if api_key:
     </div>
     """
     
-    # MailerLite API konfigūracija
-    payload = {
+    # 1. ŽINGSNIS: Sukuriame kampaniją (tuščią rėmą)
+    payload_campaign = {
         "type": "regular",
         "groups": [103032162],
         "subject": f"Kultūros savaitraštis | {leidinio_data}",
         "from": "naujienlaiskis@bernardinai.lt",
         "from_name": "Bernardinai.lt kultūros savaitraštis",
-        "language": "lt",
-        "html": email_html
+        "language": "lt"
     }
     
-    req = urllib.request.Request('https://api.mailerlite.com/api/v2/campaigns', 
-                                 data=json.dumps(payload).encode('utf-8'),
+    req_campaign = urllib.request.Request('https://api.mailerlite.com/api/v2/campaigns', 
+                                 data=json.dumps(payload_campaign).encode('utf-8'),
                                  headers={
                                      'X-MailerLite-ApiKey': api_key,
                                      'Content-Type': 'application/json'
                                  })
     try:
-        with urllib.request.urlopen(req) as response:
-            print(">>> MailerLite juodraštis sėkmingai sukurtas!")
+        with urllib.request.urlopen(req_campaign) as response:
+            campaign_data = json.loads(response.read().decode('utf-8'))
+            campaign_id = campaign_data.get('id')
+            print(f">>> Kampanija sukurta. ID: {campaign_id}")
+            
+            # 2. ŽINGSNIS: Įkeliame HTML turinį į kampaniją
+            if campaign_id:
+                payload_content = {
+                    "html": email_html,
+                    "plain": "Jei norite skaityti šį laišką, prašome įjungti HTML palaikymą el. pašto programoje."
+                }
+                
+                req_content = urllib.request.Request(f'https://api.mailerlite.com/api/v2/campaigns/{campaign_id}/content', 
+                                     data=json.dumps(payload_content).encode('utf-8'),
+                                     headers={
+                                         'X-MailerLite-ApiKey': api_key,
+                                         'Content-Type': 'application/json'
+                                     },
+                                     method='PUT')
+                
+                with urllib.request.urlopen(req_content) as resp_content:
+                    print(">>> MailerLite juodraščio turinys sėkmingai įkeltas! Galite jį peržiūrėti paskyroje.")
+                    
+    except urllib.error.HTTPError as e:
+        error_msg = e.read().decode('utf-8')
+        print(f">>> KLAIDA kuriant MailerLite juodraštį. Kodas: {e.code}, Priežastis: {error_msg}")
     except Exception as e:
-        print(f">>> KLAIDA kuriant MailerLite juodraštį: {e}")
-
+        print(f">>> KLAIDA: {e}")
 else:
     print(">>> MAILERLITE_API_KEY nerastas aplinkoje. Juodraštis nekuriamas.")
