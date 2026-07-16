@@ -187,10 +187,9 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     .meta-box {{ display: inline-block; background-color: rgba(0,0,0,0.5); padding: 15px 30px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); }}
     .meta {{ font-size: 9.5pt; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.8; white-space: nowrap; }}
     
-    .barcode-box {{ position: absolute; bottom: 15mm; right: 15mm; background-color: #FFF; padding: 10px 15px; border-radius: 4px; z-index: 10; text-align: center; color: #000; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }}
-    .barcode-text {{ font-size: 8pt; font-family: monospace; letter-spacing: 1px; font-weight: bold; margin-bottom: 3px; }}
-    .barcode-lines {{ width: 120px; height: 35px; background: repeating-linear-gradient(to right, #000 0, #000 2px, #fff 2px, #fff 4px, #000 4px, #000 5px, #fff 5px, #fff 8px, #000 8px, #000 11px, #fff 11px, #fff 13px, #000 13px, #000 15px, #fff 15px, #fff 18px); margin: 5px auto; }}
-    .barcode-numbers {{ font-size: 7pt; font-family: monospace; letter-spacing: 3px; }}
+    /* NAUJAS ISSN RĖMELIS */
+    .issn-box {{ position: absolute; bottom: 15mm; right: 15mm; background-color: rgba(0,0,0,0.5); padding: 10px 20px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); z-index: 10; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }}
+    .issn-text {{ font-size: 11pt; letter-spacing: 1px; font-weight: bold; }}
     
     .toc-page {{ page-break-before: always; padding-top: 10mm; }}
     .toc-title {{ text-align: center; font-size: 24pt; color: #7a2222; text-transform: uppercase; margin-bottom: 30px; margin-top: 20px; }}
@@ -245,10 +244,9 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
                 </div>
             </div>
         </div>
-        <div class="barcode-box">
-            <div class="barcode-text">ISSN [XXXX-XXXX]</div>
-            <div class="barcode-lines"></div>
-            <div class="barcode-numbers">9 77XXXX XXXXXX</div>
+        
+        <div class="issn-box">
+            <div class="issn-text">ISSN 3120-9696</div>
         </div>
     </div>
 
