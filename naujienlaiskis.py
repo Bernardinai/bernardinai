@@ -226,7 +226,7 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     .other-article-title {{ font-size: 16pt; font-weight: bold; margin-bottom: 8px; line-height: 1.2; break-after: avoid; page-break-after: avoid; color: #111; }}
     .other-article-meta {{ font-size: 9pt; color: #666; text-transform: uppercase; border-bottom: 1px solid #eee; padding-bottom: 8px; margin-bottom: 15px; break-after: avoid; page-break-after: avoid; }}
     .other-article img {{ width: 100% !important; height: auto !important; max-height: 300px; object-fit: cover; border-radius: 4px; margin-bottom: 5px; }}
-    .other-article figure, .other-article .wp-caption {{ margin: 0 0 15px 0; width: 100% !important; break-inside: avoid; page-break-inside: avoid; }}
+    .other-article figure, .other-article .wp-caption {{ margin: 0 0 15px 0; width: 100% !important; break-inside: avoid; page-inside: avoid; }}
     .other-article figcaption, .other-article .wp-caption-text {{ font-size: 8pt; color: #777; font-style: italic; text-align: center; line-height: 1.3; margin-top: 5px; }}
     .back-to-toc {{ text-align: right; margin-top: 15px; font-size: 9pt; }}
     .back-to-toc a {{ color: #7a2222; text-decoration: none; }}
@@ -366,7 +366,7 @@ html_kodas += """
                     <div style="font-size: 14pt; color: #111; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 20px;">Administracija</div>
                     <p><strong>Juozas Ruzgys</strong><br>Direktorius<br>juozas.ruzgys@bernardinai.lt</p>
                     <p><strong>Buhalterija</strong><br>buhalterija@bernardinai.lt</p>
-                    <p><strong>Reklama</strong><br>Reklamos ir straipsnių užsakymas<br>reklama@bernardinai.lt</p>
+                    <p><strong>Reklama</strong><br>Reklamos i straipsnių užsakymas<br>reklama@bernardinai.lt</p>
                 </td>
             </tr>
         </table>
@@ -411,8 +411,8 @@ api_key = os.environ.get('MAILERLITE_API_KEY')
 if api_key:
     print("Kuriamas ir siunčiamas MailerLite laiškas...")
     
-    # SAUGI, NEBLOKUOJAMA NUORODA TIESIAI IŠ GITHUB.COM DOMENO
-    pdf_url = "https://github.com/Bernardinai/bernardinai/raw/main/kulturos_savaitrastis_zurnalas.pdf"
+    # 🌟 TOBULA IR NEBLOKUOJAMA NUORODA PER JSDELIVR CDN TINKLĄ 🌟
+    pdf_url = "https://cdn.jsdelivr.net/gh/Bernardinai/bernardinai@main/kulturos_savaitrastis_zurnalas.pdf"
     
     email_html = f"""<!DOCTYPE html>
 <html>
@@ -448,7 +448,7 @@ if api_key:
     if kiti_straipsniai:
         email_html += f"""
         <h2 style="color: #7a2222; border-bottom: 2px solid #7a2222; padding-bottom: 10px; margin-top: 40px;">Kiti savaitės kultūros tekstai</h2>
-        <p style="color: #666; font-size: 13px; font-style: italic; margin-bottom: 20px;">Čia rasite Bernardinai.lt redaktorių ir žurnalistų atrinktas naujienų agentūrų BNS ir ELTA kultūros naujienas ir redakcijos gautus kitų autorių tekstus ir pranešimus spaudai apie kultūros įvykius.</p>
+        <p style="color: #666; font-size: 13px; font-style: italic; margin-bottom: 20px;">Čia rasite Bernardinai.lt redaktorių ir žurnalistų atrinktas naujienų agentūrų BNS i ELTA kultūros naujienas ir redakcijos gautus kitų autorių tekstus ir pranešimus spaudai apie kultūros įvykius.</p>
         """
         for straipsnis in kiti_straipsniai:
             email_html += f"""
@@ -498,7 +498,7 @@ if api_key:
             if campaign_id:
                 payload_content = {
                     "html": email_html,
-                    "plain": f"Naujausias Kultūros savaitraštis jau paruoštas!\n\nAtsisiųsti PDF galite čia: {pdf_url}\n\nISSN: 3120-9696\n\nPeržiūrėti naršyklėje: {{$url}}\nAtsisakyti naujienlaiškio: {{$unsubscribe}}"
+                    "plain": f"Naujausias Kultūros savaitraštis jau paruoštas!\n\nAtsisiųsti PDF galite čia: {pdf_url}\n\nISSN: 3120-9696\n\nPeržiūrėje naršyklėje: {{$url}}\nAtsisakyti naujienlaiškio: {{$unsubscribe}}"
                 }
                 
                 req_content = urllib.request.Request(f'https://api.mailerlite.com/api/v2/campaigns/{campaign_id}/content', 
