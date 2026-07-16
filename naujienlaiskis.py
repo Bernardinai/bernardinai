@@ -374,12 +374,12 @@ html_kodas += """
 </body></html>
 """
 
-# AUTOMATINIS DATOS INTEGRAVIMAS Į FAILO PAVADINIMĄ ARCHYVAVIMUI
-pdf_failas = f'kulturos_savaitrastis_{today_str}.pdf'
+# GRAŽINAMAS STATINIS PAVADINIMAS REPOZITORIJAI PERRAŠYTI
+pdf_failas = 'kulturos_savaitrastis_zurnalas.pdf'
 print("Generuojamas modernus PDF failas (WeasyPrint)...")
 try:
     HTML(string=html_kodas).write_pdf(pdf_failas)
-    print(f">>> Sėkmingai sukurta: {pdf_failas}")
+    print(f">>>> Sėkmingai sukurta: {pdf_failas}")
 except Exception as e:
     print(">>> GRIEŽTA KLAIDA GENERUOJANT PDF:")
     traceback.print_exc()
@@ -412,8 +412,8 @@ api_key = os.environ.get('MAILERLITE_API_KEY')
 if api_key:
     print("Kuriamas ir siunčiamas MailerLite laiškas...")
     
-    # NUORODA VEDA TIESIAI Į JŪSŲ SVEITAINĘ
-    pdf_url = f"https://www.bernardinai.lt/savaitrastis/kulturos_savaitrastis_{today_str}.pdf"
+    # NUORODA VĖL VEDA Į RAW GITHUB FAILĄ
+    pdf_url = "https://raw.githubusercontent.com/Bernardinai/bernardinai/main/kulturos_savaitrastis_zurnalas.pdf"
     
     email_html = f"""<!DOCTYPE html>
 <html>
