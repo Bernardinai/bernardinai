@@ -366,7 +366,7 @@ html_kodas += """
                     <div style="font-size: 14pt; color: #111; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 20px;">Administracija</div>
                     <p><strong>Juozas Ruzgys</strong><br>Direktorius<br>juozas.ruzgys@bernardinai.lt</p>
                     <p><strong>Buhalterija</strong><br>buhalterija@bernardinai.lt</p>
-                    <p><strong>Reklama</strong><br>Reklamos ir straipsnių užsakymas<br>reklama@bernardinai.lt</p>
+                    <p><strong>Reklama</strong><br>Reklamos i straipsnių užsakymas<br>reklama@bernardinai.lt</p>
                 </td>
             </tr>
         </table>
@@ -374,7 +374,8 @@ html_kodas += """
 </body></html>
 """
 
-pdf_failas = 'kulturos_savaitrastis_zurnalas.pdf'
+# AUTOMATINIS DATOS INTEGRAVIMAS Į FAILO PAVADINIMĄ ARCHYVAVIMUI
+pdf_failas = f'kulturos_savaitrastis_{today_str}.pdf'
 print("Generuojamas modernus PDF failas (WeasyPrint)...")
 try:
     HTML(string=html_kodas).write_pdf(pdf_failas)
@@ -410,7 +411,9 @@ api_key = os.environ.get('MAILERLITE_API_KEY')
 
 if api_key:
     print("Kuriamas ir siunčiamas MailerLite laiškas...")
-    pdf_url = "https://raw.githubusercontent.com/Bernardinai/bernardinai/main/kulturos_savaitrastis_zurnalas.pdf"
+    
+    # NUORODA VEDA TIESIAI Į JŪSŲ SVEITAINĘ
+    pdf_url = f"https://www.bernardinai.lt/savaitrastis/kulturos_savaitrastis_{today_str}.pdf"
     
     email_html = f"""<!DOCTYPE html>
 <html>
@@ -458,7 +461,6 @@ if api_key:
             </div>
             """
 
-    # PAKEISTA: EL. LAIŠKO PORAŠTĖJE (ŽEMIAU) PRIDĖTAS DUBLIUOTAS ISSN NUMERIS
     email_html += """
         <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; font-size: 12px; color: #999;">
             <strong style="color: #444; font-size: 14px;">ISSN 3120-9696</strong><br><br>
