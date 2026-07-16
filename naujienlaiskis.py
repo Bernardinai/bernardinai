@@ -117,7 +117,6 @@ def apdoroti_straipsni(entry, is_main=True):
             saltinis = saltinis_match.group(1).strip()
             pilnas_tekstas = pilnas_tekstas.replace(saltinis_match.group(0), '')
 
-    print(f"Apdorojamas: {entry.title[:30]}...")
     pilnas_tekstas = re.sub(r'<h([1-6])\b[^>]*>', r'<div class="heading-\1">', pilnas_tekstas, flags=re.IGNORECASE)
     pilnas_tekstas = re.sub(r'</h[1-6]>', r'</div>', pilnas_tekstas, flags=re.IGNORECASE)
     pilnas_tekstas = re.sub(r'(<p[^>]*>)\s*([A-ZĄČĘĖĮŠŲŪŽa-ząčęėįšųūž])', r'\1<span class="drop-cap">\2</span>', pilnas_tekstas, count=1)
@@ -156,7 +155,7 @@ for puslapis in range(1, 10):
 pagrindiniai_straipsniai.sort(key=lambda x: x['pub_date_obj'])
 kiti_straipsniai.sort(key=lambda x: x['pub_date_obj'])
 
-print(f"Iš viso atrinkta: {len(pagrindiniai_straipsniai)} pagrindinių i {len(kiti_straipsniai)} papildomų straipsnių.")
+print(f"Iš viso atrinkta: {len(pagrindiniai_straipsniai)} pagrindinių ir {len(kiti_straipsniai)} papildomų straipsnių.")
 
 # ==========================================
 # 3. HTML DIZAINAS IR GENERAVIMAS
@@ -367,7 +366,7 @@ html_kodas += """
                     <div style="font-size: 14pt; color: #111; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 20px;">Administracija</div>
                     <p><strong>Juozas Ruzgys</strong><br>Direktorius<br>juozas.ruzgys@bernardinai.lt</p>
                     <p><strong>Buhalterija</strong><br>buhalterija@bernardinai.lt</p>
-                    <p><strong>Reklama</strong><br>Reklamos i straipsnių užsakymas<br>reklama@bernardinai.lt</p>
+                    <p><strong>Reklama</strong><br>Reklamos ir straipsnių užsakymas<br>reklama@bernardinai.lt</p>
                 </td>
             </tr>
         </table>
@@ -471,3 +470,68 @@ if api_key:
     </div>
 </body>
 </html>
+"""
+    
+    payload_campaign = {
+        "type": "regular",
+        "groups": [103032162],
+        "subject": f"Kultūros savaitraštis | {leidinio_data}",
+        "from": "naujienlaiskis@bernardinai.lt",
+        "from_name": "Bernardinai.lt kultūros savaitraštis",
+        "language": "lt",
+        "google_analytics": f"kulturos-savaitrastis-{today_str}"
+    }
+    
+    req_campaign = urllib.request.Request('https://api.mailerlite.com/api/v2/campaigns', 
+                                 data=json.dumps(payload_campaign).encode('utf-8'),
+                                 headers={
+                                     'X-MailerLite-ApiKey': api_key,
+                                     'Content-Type': 'application/json',
+                                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
+                                 })
+    try:
+        with urllib.request.urlopen(req_campaign) as response:
+            campaign_data = json.loads(response.read().decode('utf-8'))
+            campaign_id = campaign_data.get('id')
+            print(f">>> Kampanija sukurta. ID: {campaign_id}")
+            
+            if campaign_id:
+                payload_content = {
+                    "html": email_html,
+                    "plain": f"Naujausias Kultūros savaitraštis jau paruoštas!\n\nAtsisiųsti PDF galite čia: {pdf_url}\n\nISSN: 3120-9696\n\nPeržiūrėti naršyklėje: {{$url}}\nAtsisakyti naujienlaiškio: {{$unsubscribe}}"
+                }
+                
+                req_content = urllib.request.Request(f'https://api.mailerlite.com/api/v2/campaigns/{campaign_id}/content', 
+                                     data=json.dumps(payload_content).encode('utf-8'),
+                                     headers={
+                                         'X-MailerLite-ApiKey': api_key,
+                                         'Content-Type': 'application/json',
+                                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
+                                     },
+                                     method='PUT')
+                
+                with urllib.request.urlopen(req_content) as resp_content:
+                    print(">>> MailerLite laiško turinys įkeltas!")
+                    
+                if event_name == 'schedule':
+                    req_send = urllib.request.Request(f'https://api.mailerlite.com/api/v2/campaigns/{campaign_id}/actions/send', 
+                                         data=json.dumps({}).encode('utf-8'),
+                                         headers={
+                                             'X-MailerLite-ApiKey': api_key,
+                                             'Content-Type': 'application/json',
+                                             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
+                                         },
+                                         method='POST')
+                    
+                    with urllib.request.urlopen(req_send) as resp_send:
+                        print(">>> AUTOMATINIS PALEIDIMAS: MailerLite kampanija sėkmingai perkelta į OUTBOX (pradėta siųsti)!")
+                else:
+                    print(">>> RANKINIS PALEIDIMAS: Laiškas paliktas kaip Juodraštis (Draft).")
+                    
+    except urllib.error.HTTPError as e:
+        error_msg = e.read().decode('utf-8')
+        print(f">>> KLAIDA kuriant MailerLite juodraštį. Kodas: {e.code}, Priežastis: {error_msg}")
+    except Exception as e:
+        print(f">>> KLAIDA: {e}")
+else:
+    print(">>> MAILERLITE_API_KEY nerastas aplinkoje. Juodraštis nekuriamas.")
