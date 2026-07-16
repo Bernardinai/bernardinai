@@ -117,6 +117,7 @@ def apdoroti_straipsni(entry, is_main=True):
             saltinis = saltinis_match.group(1).strip()
             pilnas_tekstas = pilnas_tekstas.replace(saltinis_match.group(0), '')
 
+    print(f"Apdorojamas: {entry.title[:30]}...")
     pilnas_tekstas = re.sub(r'<h([1-6])\b[^>]*>', r'<div class="heading-\1">', pilnas_tekstas, flags=re.IGNORECASE)
     pilnas_tekstas = re.sub(r'</h[1-6]>', r'</div>', pilnas_tekstas, flags=re.IGNORECASE)
     pilnas_tekstas = re.sub(r'(<p[^>]*>)\s*([A-ZĄČĘĖĮŠŲŪŽa-ząčęėįšųūž])', r'\1<span class="drop-cap">\2</span>', pilnas_tekstas, count=1)
@@ -155,7 +156,7 @@ for puslapis in range(1, 10):
 pagrindiniai_straipsniai.sort(key=lambda x: x['pub_date_obj'])
 kiti_straipsniai.sort(key=lambda x: x['pub_date_obj'])
 
-print(f"Iš viso atrinkta: {len(pagrindiniai_straipsniai)} pagrindinių ir {len(kiti_straipsniai)} papildomų straipsnių.")
+print(f"Iš viso atrinkta: {len(pagrindiniai_straipsniai)} pagrindinių i {len(kiti_straipsniai)} papildomų straipsnių.")
 
 # ==========================================
 # 3. HTML DIZAINAS IR GENERAVIMAS
@@ -411,8 +412,8 @@ api_key = os.environ.get('MAILERLITE_API_KEY')
 if api_key:
     print("Kuriamas ir siunčiamas MailerLite laiškas...")
     
-    # 🌟 TOBULA IR NEBLOKUOJAMA NUORODA PER JSDELIVR CDN TINKLĄ 🌟
-    pdf_url = "https://cdn.jsdelivr.net/gh/Bernardinai/bernardinai@main/kulturos_savaitrastis_zurnalas.pdf"
+    # 🌟 NAUJA, AKLINAI APSAUGOTA NUORODA PER GITHUB PAGES 🌟
+    pdf_url = "https://bernardinai.github.io/bernardinai/kulturos_savaitrastis_zurnalas.pdf"
     
     email_html = f"""<!DOCTYPE html>
 <html>
@@ -448,7 +449,7 @@ if api_key:
     if kiti_straipsniai:
         email_html += f"""
         <h2 style="color: #7a2222; border-bottom: 2px solid #7a2222; padding-bottom: 10px; margin-top: 40px;">Kiti savaitės kultūros tekstai</h2>
-        <p style="color: #666; font-size: 13px; font-style: italic; margin-bottom: 20px;">Čia rasite Bernardinai.lt redaktorių ir žurnalistų atrinktas naujienų agentūrų BNS i ELTA kultūros naujienas ir redakcijos gautus kitų autorių tekstus ir pranešimus spaudai apie kultūros įvykius.</p>
+        <p style="color: #666; font-size: 13px; font-style: italic; margin-bottom: 20px;">Čia rasite Bernardinai.lt redaktorių ir žurnalistų atrinktas naujienų agentūrų BNS ir ELTA kultūros naujienas ir redakcijos gautus kitų autorių tekstus ir pranešimus spaudai apie kultūros įvykius.</p>
         """
         for straipsnis in kiti_straipsniai:
             email_html += f"""
@@ -470,68 +471,3 @@ if api_key:
     </div>
 </body>
 </html>
-"""
-    
-    payload_campaign = {
-        "type": "regular",
-        "groups": [103032162],
-        "subject": f"Kultūros savaitraštis | {leidinio_data}",
-        "from": "naujienlaiskis@bernardinai.lt",
-        "from_name": "Bernardinai.lt kultūros savaitraštis",
-        "language": "lt",
-        "google_analytics": f"kulturos-savaitrastis-{today_str}"
-    }
-    
-    req_campaign = urllib.request.Request('https://api.mailerlite.com/api/v2/campaigns', 
-                                 data=json.dumps(payload_campaign).encode('utf-8'),
-                                 headers={
-                                     'X-MailerLite-ApiKey': api_key,
-                                     'Content-Type': 'application/json',
-                                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
-                                 })
-    try:
-        with urllib.request.urlopen(req_campaign) as response:
-            campaign_data = json.loads(response.read().decode('utf-8'))
-            campaign_id = campaign_data.get('id')
-            print(f">>> Kampanija sukurta. ID: {campaign_id}")
-            
-            if campaign_id:
-                payload_content = {
-                    "html": email_html,
-                    "plain": f"Naujausias Kultūros savaitraštis jau paruoštas!\n\nAtsisiųsti PDF galite čia: {pdf_url}\n\nISSN: 3120-9696\n\nPeržiūrėje naršyklėje: {{$url}}\nAtsisakyti naujienlaiškio: {{$unsubscribe}}"
-                }
-                
-                req_content = urllib.request.Request(f'https://api.mailerlite.com/api/v2/campaigns/{campaign_id}/content', 
-                                     data=json.dumps(payload_content).encode('utf-8'),
-                                     headers={
-                                         'X-MailerLite-ApiKey': api_key,
-                                         'Content-Type': 'application/json',
-                                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
-                                     },
-                                     method='PUT')
-                
-                with urllib.request.urlopen(req_content) as resp_content:
-                    print(">>> MailerLite laiško turinys įkeltas!")
-                    
-                if event_name == 'schedule':
-                    req_send = urllib.request.Request(f'https://api.mailerlite.com/api/v2/campaigns/{campaign_id}/actions/send', 
-                                         data=json.dumps({}).encode('utf-8'),
-                                         headers={
-                                             'X-MailerLite-ApiKey': api_key,
-                                             'Content-Type': 'application/json',
-                                             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
-                                         },
-                                         method='POST')
-                    
-                    with urllib.request.urlopen(req_send) as resp_send:
-                        print(">>> AUTOMATINIS PALEIDIMAS: MailerLite kampanija sėkmingai perkelta į OUTBOX (pradėta siųsti)!")
-                else:
-                    print(">>> RANKINIS PALEIDIMAS: Laiškas paliktas kaip Juodraštis (Draft).")
-                    
-    except urllib.error.HTTPError as e:
-        error_msg = e.read().decode('utf-8')
-        print(f">>> KLAIDA kuriant MailerLite juodraštį. Kodas: {e.code}, Priežastis: {error_msg}")
-    except Exception as e:
-        print(f">>> KLAIDA: {e}")
-else:
-    print(">>> MAILERLITE_API_KEY nerastas aplinkoje. Juodraštis nekuriamas.")
