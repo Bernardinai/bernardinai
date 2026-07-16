@@ -23,7 +23,7 @@ if event_name == 'schedule':
     lt_time = datetime.datetime.now(ZoneInfo("Europe/Vilnius"))
     if lt_time.hour != 8:
         print(f"Dabar Lietuvoje yra {lt_time.hour} val. Agentas ilsisi, nes laiškus siunčiame tik lygiai 08:00 val.")
-        sys.exit(0) # Tyliai baigiame darbą ir nepykdome GitHub'o
+        sys.exit(0)
 
 # ==========================================
 # 1. KONFIGŪRACIJA IR DATOS
@@ -52,11 +52,16 @@ if os.path.exists(tracker_file):
             if len(data) == 3:
                 last_run_date = data[2]
             
-            if saved_year == current_year:
-                if last_run_date == today_str:
-                    numeris = saved_num
+            # Jei paleidžiama automatizuotai
+            if event_name == 'schedule':
+                if saved_year == current_year:
+                    numeris = saved_num + 1 if last_run_date != today_str else saved_num
                 else:
-                    numeris = saved_num + 1
+                    numeris = 1 # Nauji metai
+            # Jei paleidžiama rankiniu būdu - išlaikome paskutinį buvusį numerį
+            else:
+                current_year = saved_year
+                numeris = saved_num
     except Exception:
         pass
 
@@ -377,19 +382,23 @@ except Exception as e:
 # ==========================================
 # 4. IŠSAUGOME LEIDINIO NUMERĮ KITAM KARTUI
 # ==========================================
-try:
-    with open(tracker_file, 'w', encoding='utf-8') as f:
-        f.write(f"{current_year}/{numeris}/{today_str}")
-except Exception as e:
-    print(f"Nepavyko išsaugoti numerio failo: {e}")
+if event_name == 'schedule':
+    try:
+        with open(tracker_file, 'w', encoding='utf-8') as f:
+            f.write(f"{current_year}/{numeris}/{today_str}")
+        print(">>> AUTOMATINIS PALEIDIMAS: Leidinio numeris atnaujintas.")
+    except Exception as e:
+        print(f"Nepavyko išsaugoti numerio failo: {e}")
+else:
+    print(">>> RANKINIS PALEIDIMAS: Numeracijos atmintis neatnaujinama (liks ta pati).")
 
 # ==========================================
-# 5. MAILERLITE LAIŠKO KŪRIMAS IR IŠSIUNTIMAS
+# 5. MAILERLITE LAIŠKO KŪRIMAS
 # ==========================================
 api_key = os.environ.get('MAILERLITE_API_KEY')
 
 if api_key:
-    print("Kuriamas ir siunčiamas MailerLite laiškas...")
+    print("Kuriamas MailerLite laiškas...")
     pdf_url = "https://raw.githubusercontent.com/Bernardinai/bernardinai/main/kulturos_savaitrastis_zurnalas.pdf"
     
     email_html = f"""<!DOCTYPE html>
@@ -477,17 +486,21 @@ if api_key:
                 with urllib.request.urlopen(req_content) as resp_content:
                     print(">>> MailerLite laiško turinys įkeltas!")
                     
-                req_send = urllib.request.Request(f'https://api.mailerlite.com/api/v2/campaigns/{campaign_id}/actions/send', 
-                                     data=json.dumps({}).encode('utf-8'),
-                                     headers={
-                                         'X-MailerLite-ApiKey': api_key,
-                                         'Content-Type': 'application/json',
-                                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
-                                     },
-                                     method='POST')
-                
-                with urllib.request.urlopen(req_send) as resp_send:
-                    print(">>> MailerLite kampanija sėkmingai perkelta į OUTBOX (pradėta siųsti)!")
+                # AUTOMATINIO IŠSIUNTIMO BLOKAS
+                if event_name == 'schedule':
+                    req_send = urllib.request.Request(f'https://api.mailerlite.com/api/v2/campaigns/{campaign_id}/actions/send', 
+                                         data=json.dumps({}).encode('utf-8'),
+                                         headers={
+                                             'X-MailerLite-ApiKey': api_key,
+                                             'Content-Type': 'application/json',
+                                             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
+                                         },
+                                         method='POST')
+                    
+                    with urllib.request.urlopen(req_send) as resp_send:
+                        print(">>> AUTOMATINIS PALEIDIMAS: MailerLite kampanija sėkmingai perkelta į OUTBOX (pradėta siųsti)!")
+                else:
+                    print(">>> RANKINIS PALEIDIMAS: Laiškas paliktas kaip Juodraštis (Draft), automatinis siuntimas blokuotas.")
                     
     except urllib.error.HTTPError as e:
         error_msg = e.read().decode('utf-8')
