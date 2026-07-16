@@ -366,7 +366,7 @@ html_kodas += """
                     <div style="font-size: 14pt; color: #111; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 20px;">Administracija</div>
                     <p><strong>Juozas Ruzgys</strong><br>Direktorius<br>juozas.ruzgys@bernardinai.lt</p>
                     <p><strong>Buhalterija</strong><br>buhalterija@bernardinai.lt</p>
-                    <p><strong>Reklama</strong><br>Reklamos i straipsnių užsakymas<br>reklama@bernardinai.lt</p>
+                    <p><strong>Reklama</strong><br>Reklamos ir straipsnių užsakymas<br>reklama@bernardinai.lt</p>
                 </td>
             </tr>
         </table>
@@ -374,7 +374,6 @@ html_kodas += """
 </body></html>
 """
 
-# GRAŽINAMAS STATINIS PAVADINIMAS REPOZITORIJAI PERRAŠYTI
 pdf_failas = 'kulturos_savaitrastis_zurnalas.pdf'
 print("Generuojamas modernus PDF failas (WeasyPrint)...")
 try:
@@ -412,8 +411,8 @@ api_key = os.environ.get('MAILERLITE_API_KEY')
 if api_key:
     print("Kuriamas ir siunčiamas MailerLite laiškas...")
     
-    # NUORODA VĖL VEDA Į RAW GITHUB FAILĄ
-    pdf_url = "https://raw.githubusercontent.com/Bernardinai/bernardinai/main/kulturos_savaitrastis_zurnalas.pdf"
+    # SAUGI, NEBLOKUOJAMA NUORODA TIESIAI IŠ GITHUB.COM DOMENO
+    pdf_url = "https://github.com/Bernardinai/bernardinai/raw/main/kulturos_savaitrastis_zurnalas.pdf"
     
     email_html = f"""<!DOCTYPE html>
 <html>
