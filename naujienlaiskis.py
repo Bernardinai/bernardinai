@@ -17,8 +17,6 @@ from zoneinfo import ZoneInfo
 # ==========================================
 event_name = os.environ.get('EVENT_NAME', '')
 
-# Laiką tikriname tik tada, kai veikia automatika (cron grafikas),
-# kad leistume jums testuoti skriptą rankiniu būdu bet kuriuo metu!
 if event_name == 'schedule':
     lt_time = datetime.datetime.now(ZoneInfo("Europe/Vilnius"))
     if lt_time.hour != 8:
@@ -41,31 +39,29 @@ savaites_laikotarpis = f"{one_week_ago.year} m. {menesiai[one_week_ago.month - 1
 tracker_file = 'leidinio_numeris.txt'
 current_year = today.year
 numeris = 1
-last_run_date = ""
 
-if os.path.exists(tracker_file):
-    try:
-        with open(tracker_file, 'r', encoding='utf-8') as f:
-            data = f.read().strip().split('/')
-            saved_year = int(data[0])
-            saved_num = int(data[1])
-            if len(data) == 3:
-                last_run_date = data[2]
-            
-            # Jei paleidžiama automatizuotai
-            if event_name == 'schedule':
+if event_name == 'schedule':
+    if os.path.exists(tracker_file):
+        try:
+            with open(tracker_file, 'r', encoding='utf-8') as f:
+                data = f.read().strip().split('/')
+                saved_year = int(data[0])
+                saved_num = int(data[1])
+                last_run_date = data[2] if len(data) == 3 else ""
+                
                 if saved_year == current_year:
-                    numeris = saved_num + 1 if last_run_date != today_str else saved_num
+                    if last_run_date == today_str:
+                        numeris = saved_num
+                    else:
+                        numeris = saved_num + 1
                 else:
-                    numeris = 1 # Nauji metai
-            # Jei paleidžiama rankiniu būdu - išlaikome paskutinį buvusį numerį
-            else:
-                current_year = saved_year
-                numeris = saved_num
-    except Exception:
-        pass
-
-leidinio_numeris = f"{current_year}/{numeris}"
+                    numeris = 1
+        except Exception:
+            pass
+    leidinio_numeris = f"{current_year}/{numeris}"
+else:
+    # Rankinio paleidimo atveju visada rašome "Bandomasis"
+    leidinio_numeris = "Bandomasis"
 
 logo_src = ""
 logo_failas = 'logo.png' 
@@ -386,19 +382,26 @@ if event_name == 'schedule':
     try:
         with open(tracker_file, 'w', encoding='utf-8') as f:
             f.write(f"{current_year}/{numeris}/{today_str}")
-        print(">>> AUTOMATINIS PALEIDIMAS: Leidinio numeris atnaujintas.")
+        print(">>> AUTOMATINIS PALEIDIMAS: Leidinio numeris atnaujintas ir išsaugotas.")
     except Exception as e:
         print(f"Nepavyko išsaugoti numerio failo: {e}")
 else:
-    print(">>> RANKINIS PALEIDIMAS: Numeracijos atmintis neatnaujinama (liks ta pati).")
+    # Kad git add komanda nelūžtų rankinio paleidimo metu, jei failo dar nėra:
+    if not os.path.exists(tracker_file):
+        try:
+            with open(tracker_file, 'w', encoding='utf-8') as f:
+                f.write(f"{current_year}/0/2000-01-01")
+        except Exception:
+            pass
+    print(">>> RANKINIS PALEIDIMAS: Naudotas 'Bandomasis' numeris, atmintis neatnaujinama.")
 
 # ==========================================
-# 5. MAILERLITE LAIŠKO KŪRIMAS
+# 5. MAILERLITE LAIŠKO KŪRIMAS IR IŠSIUNTIMAS
 # ==========================================
 api_key = os.environ.get('MAILERLITE_API_KEY')
 
 if api_key:
-    print("Kuriamas MailerLite laiškas...")
+    print("Kuriamas ir siunčiamas MailerLite laiškas...")
     pdf_url = "https://raw.githubusercontent.com/Bernardinai/bernardinai/main/kulturos_savaitrastis_zurnalas.pdf"
     
     email_html = f"""<!DOCTYPE html>
@@ -486,7 +489,7 @@ if api_key:
                 with urllib.request.urlopen(req_content) as resp_content:
                     print(">>> MailerLite laiško turinys įkeltas!")
                     
-                # AUTOMATINIO IŠSIUNTIMO BLOKAS
+                # Tik jei paleista automatiškai, komanduojame išsiųsti
                 if event_name == 'schedule':
                     req_send = urllib.request.Request(f'https://api.mailerlite.com/api/v2/campaigns/{campaign_id}/actions/send', 
                                          data=json.dumps({}).encode('utf-8'),
@@ -500,7 +503,7 @@ if api_key:
                     with urllib.request.urlopen(req_send) as resp_send:
                         print(">>> AUTOMATINIS PALEIDIMAS: MailerLite kampanija sėkmingai perkelta į OUTBOX (pradėta siųsti)!")
                 else:
-                    print(">>> RANKINIS PALEIDIMAS: Laiškas paliktas kaip Juodraštis (Draft), automatinis siuntimas blokuotas.")
+                    print(">>> RANKINIS PALEIDIMAS: Laiškas paliktas kaip Juodraštis (Draft).")
                     
     except urllib.error.HTTPError as e:
         error_msg = e.read().decode('utf-8')
