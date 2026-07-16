@@ -60,7 +60,6 @@ if event_name == 'schedule':
             pass
     leidinio_numeris = f"{current_year}/{numeris}"
 else:
-    # Rankinio paleidimo atveju visada rašome "Bandomasis"
     leidinio_numeris = "Bandomasis"
 
 logo_src = ""
@@ -213,7 +212,8 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     .article-image {{ width: 100%; max-height: 400px; object-fit: cover; margin-bottom: 25px; border-radius: 4px; }}
     
     .other-articles-section {{ page-break-before: always; padding-top: 10mm; }}
-    .other-section-header {{ text-align: center; font-size: 24pt; font-weight: bold; color: #7a2222; text-transform: uppercase; margin-bottom: 30px; border-bottom: 2px solid #7a2222; padding-bottom: 10px; }}
+    .other-section-header {{ text-align: center; font-size: 24pt; font-weight: bold; color: #7a2222; text-transform: uppercase; margin-bottom: 10px; border-bottom: 2px solid #7a2222; padding-bottom: 10px; }}
+    .other-section-subtitle {{ text-align: center; font-size: 10pt; color: #666; margin-bottom: 30px; font-style: italic; padding: 0 10%; line-height: 1.5; }}
     .other-article {{ margin-bottom: 40px; }}
     .other-article-title {{ font-size: 16pt; font-weight: bold; margin-bottom: 8px; line-height: 1.2; break-after: avoid; page-break-after: avoid; color: #111; }}
     .other-article-meta {{ font-size: 9pt; color: #666; text-transform: uppercase; border-bottom: 1px solid #eee; padding-bottom: 8px; margin-bottom: 15px; break-after: avoid; page-break-after: avoid; }}
@@ -285,7 +285,7 @@ for i, straipsnis in enumerate(pagrindiniai_straipsniai):
     <div class="article-page" id="pagrindinis_{i}">
         <div class="article-header">
             <div class="article-title">{straipsnis['title']}</div>
-            <div class="article-meta">Autorius: <strong>{straipsnis['author']}</strong> &nbsp;|&nbsp; Šaltinis: <strong>Bernardinai.lt</strong> &nbsp;|&nbsp; Publikuota: {straipsnis['date']}</div>
+            <div class="article-meta"><strong>{straipsnis['author']}</strong> &nbsp;|&nbsp; <strong>Bernardinai.lt</strong> &nbsp;|&nbsp; Publikuota: {straipsnis['date']}</div>
         </div>
         {f'<img src="{straipsnis["image"]}" class="article-image">' if straipsnis['image'] else ''}
         <div class="article-columns">
@@ -299,13 +299,14 @@ if kiti_straipsniai:
     html_kodas += """
     <div class="other-articles-section">
         <div class="other-section-header">Kiti savaitės kultūros tekstai</div>
+        <div class="other-section-subtitle">Čia rasite Bernardinai.lt redaktorių ir žurnalistų atrinktas naujienų agentūrų BNS ir ELTA kultūros naujienas ir redakcijos gautus kitų autorių tekstus ir pranešimus spaudai apie kultūros įvykius.</div>
         <div class="article-columns">
     """
     for i, straipsnis in enumerate(kiti_straipsniai):
         html_kodas += f"""
             <div class="other-article" id="kitas_{i}">
                 <div class="other-article-title">{straipsnis['title']}</div>
-                <div class="other-article-meta">Šaltinis: <strong>{straipsnis['source']}</strong> &nbsp;|&nbsp; Publikuota: {straipsnis['date']}</div>
+                <div class="other-article-meta">Publikuota: {straipsnis['date']}</div>
                 {straipsnis['content']}
                 <div class="back-to-toc"><a href="#turinys">↑ Grįžti į turinį</a></div>
             </div>
@@ -386,7 +387,6 @@ if event_name == 'schedule':
     except Exception as e:
         print(f"Nepavyko išsaugoti numerio failo: {e}")
 else:
-    # Kad git add komanda nelūžtų rankinio paleidimo metu, jei failo dar nėra:
     if not os.path.exists(tracker_file):
         try:
             with open(tracker_file, 'w', encoding='utf-8') as f:
@@ -422,21 +422,34 @@ if api_key:
             <a href="{pdf_url}" style="background-color: #d32f2f; color: #ffffff; padding: 15px 30px; text-decoration: none; font-size: 18px; font-weight: bold; border-radius: 5px; display: inline-block;">Atsisiųsti PDF savaitraštį</a>
         </div>
         
-        <h2 style="color: #7a2222; border-bottom: 2px solid #7a2222; padding-bottom: 10px; margin-top: 40px;">Šios savaitės svarbiausi</h2>
+        <h2 style="color: #7a2222; border-bottom: 2px solid #7a2222; padding-bottom: 10px; margin-top: 40px;">Savaitės svarbiausi</h2>
     """
     
-    visi_straipsniai_laiskui = pagrindiniai_straipsniai + kiti_straipsniai
-
-    for straipsnis in visi_straipsniai_laiskui:
+    for straipsnis in pagrindiniai_straipsniai:
         email_html += f"""
         <div style="margin-bottom: 40px; padding-bottom: 20px; border-bottom: 1px solid #eee;">
             {f'<img src="{straipsnis["image"]}" style="width: 100%; max-width: 600px; border-radius: 8px; margin-bottom: 15px;">' if straipsnis['image'] else ''}
             <h3 style="margin: 0 0 10px 0;"><a href="{straipsnis['link']}" style="color: #111; text-decoration: none; font-size: 20px;">{straipsnis['title']}</a></h3>
-            <div style="color: #7a2222; font-size: 12px; font-weight: bold; margin-bottom: 10px; text-transform: uppercase;">Publikuota: {straipsnis['date']}</div>
+            <div style="color: #7a2222; font-size: 12px; font-weight: bold; margin-bottom: 10px; text-transform: uppercase;">{straipsnis['author']} | Bernardinai.lt | Publikuota: {straipsnis['date']}</div>
             <p style="color: #555; font-size: 15px; line-height: 1.5; margin: 0;">{straipsnis['excerpt']}</p>
         </div>
         """
         
+    if kiti_straipsniai:
+        email_html += f"""
+        <h2 style="color: #7a2222; border-bottom: 2px solid #7a2222; padding-bottom: 10px; margin-top: 40px;">Kiti savaitės kultūros tekstai</h2>
+        <p style="color: #666; font-size: 13px; font-style: italic; margin-bottom: 20px;">Čia rasite Bernardinai.lt redaktorių ir žurnalistų atrinktas naujienų agentūrų BNS ir ELTA kultūros naujienas ir redakcijos gautus kitų autorių tekstus ir pranešimus spaudai apie kultūros įvykius.</p>
+        """
+        for straipsnis in kiti_straipsniai:
+            email_html += f"""
+            <div style="margin-bottom: 40px; padding-bottom: 20px; border-bottom: 1px solid #eee;">
+                {f'<img src="{straipsnis["image"]}" style="width: 100%; max-width: 600px; border-radius: 8px; margin-bottom: 15px;">' if straipsnis['image'] else ''}
+                <h3 style="margin: 0 0 10px 0;"><a href="{straipsnis['link']}" style="color: #111; text-decoration: none; font-size: 20px;">{straipsnis['title']}</a></h3>
+                <div style="color: #7a2222; font-size: 12px; font-weight: bold; margin-bottom: 10px; text-transform: uppercase;">Publikuota: {straipsnis['date']}</div>
+                <p style="color: #555; font-size: 15px; line-height: 1.5; margin: 0;">{straipsnis['excerpt']}</p>
+            </div>
+            """
+
     email_html += """
         <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; font-size: 12px; color: #999;">
             Išsiųsta naudojant Bernardinai.lt automatizaciją.<br><br>
@@ -489,7 +502,6 @@ if api_key:
                 with urllib.request.urlopen(req_content) as resp_content:
                     print(">>> MailerLite laiško turinys įkeltas!")
                     
-                # Tik jei paleista automatiškai, komanduojame išsiųsti
                 if event_name == 'schedule':
                     req_send = urllib.request.Request(f'https://api.mailerlite.com/api/v2/campaigns/{campaign_id}/actions/send', 
                                          data=json.dumps({}).encode('utf-8'),
