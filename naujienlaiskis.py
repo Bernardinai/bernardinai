@@ -160,7 +160,19 @@ print(f"Iš viso atrinkta: {len(pagrindiniai_straipsniai)} pagrindinių ir {len(
 # ==========================================
 # 3. HTML DIZAINAS IR GENERAVIMAS
 # ==========================================
-cover_bg_image = pagrindiniai_straipsniai[-1]['image'] if len(pagrindiniai_straipsniai) > 0 and pagrindiniai_straipsniai[-1]['image'] else "" 
+
+# Ieškome geriausios nuotraukos viršeliui (nuo naujausio link seniausio)
+cover_bg_image = ""
+for straipsnis in reversed(pagrindiniai_straipsniai):
+    if straipsnis.get('image'):
+        cover_bg_image = straipsnis['image']
+        break
+
+if not cover_bg_image:
+    for straipsnis in reversed(kiti_straipsniai):
+        if straipsnis.get('image'):
+            cover_bg_image = straipsnis['image']
+            break
 
 html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>
@@ -175,7 +187,8 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     html, body {{ margin: 0; padding: 0; }}
     body {{ font-family: 'Georgia', serif; color: #222; line-height: 1.6; font-size: 11pt; }}
     
-    .cover-page {{ page: cover; position: relative; width: 100%; height: 100vh; background-color: #1a1a1a; overflow: hidden; box-sizing: border-box; }}
+    /* Grąžinti griežti A4 matmenys vietoje 100vh, kad PDF generatorius nepamestų fono */
+    .cover-page {{ page: cover; position: relative; width: 210mm; height: 297mm; background-color: #1a1a1a; overflow: hidden; }}
     .bg-img {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }}
     .overlay {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(26, 26, 26, 0.70); z-index: 2; }}
     .cover-content {{ position: absolute; top: 48%; left: 50%; transform: translate(-50%, -50%); text-align: center; width: 85%; color: white; z-index: 3; }}
@@ -187,7 +200,6 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     .meta-box {{ display: inline-block; background-color: rgba(0,0,0,0.5); padding: 15px 30px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); }}
     .meta {{ font-size: 9.5pt; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.8; white-space: nowrap; }}
     
-    /* NAUJAS ISSN RĖMELIS */
     .issn-box {{ position: absolute; bottom: 15mm; right: 15mm; background-color: rgba(0,0,0,0.5); padding: 10px 20px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); z-index: 10; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }}
     .issn-text {{ font-size: 11pt; letter-spacing: 1px; font-weight: bold; }}
     
