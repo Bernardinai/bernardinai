@@ -160,8 +160,6 @@ print(f"Iš viso atrinkta: {len(pagrindiniai_straipsniai)} pagrindinių ir {len(
 # ==========================================
 # 3. HTML DIZAINAS IR GENERAVIMAS
 # ==========================================
-
-# Ieškome geriausios nuotraukos viršeliui (nuo naujausio link seniausio)
 cover_bg_image = ""
 for straipsnis in reversed(pagrindiniai_straipsniai):
     if straipsnis.get('image'):
@@ -187,7 +185,6 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     html, body {{ margin: 0; padding: 0; }}
     body {{ font-family: 'Georgia', serif; color: #222; line-height: 1.6; font-size: 11pt; }}
     
-    /* Grąžinti griežti A4 matmenys vietoje 100vh, kad PDF generatorius nepamestų fono */
     .cover-page {{ page: cover; position: relative; width: 210mm; height: 297mm; background-color: #1a1a1a; overflow: hidden; }}
     .bg-img {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }}
     .overlay {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(26, 26, 26, 0.70); z-index: 2; }}
@@ -331,7 +328,8 @@ html_kodas += """
         <h1 style="border-bottom: 2px solid #7a2222; padding-bottom: 10px; margin-bottom: 20px;">Redakcija ir kontaktai</h1>
         <div style="font-size: 11pt; line-height: 1.6; margin-bottom: 30px; text-align: left;">
             <strong>Interneto dienraštis „Bernardinai.lt“</strong><br>
-            Veiklos pradžia – 2004 m. vasario 21 d.<br><br>
+            Veiklos pradžia – 2004 m. vasario 21 d.<br>
+            <strong>ISSN 3120-9696</strong><br><br>
             <strong>Leidėjas:</strong> VŠĮ BERNARDINAI.LT (Bankams pradėjus tikrinti pavadinimus, prašome naudoti šį pavadinimą).<br>
             <strong>Įmonės kodas:</strong> 300671187<br>
             <strong>PVM mokėtojo kodas:</strong> LT100004414010<br>
@@ -460,8 +458,10 @@ if api_key:
             </div>
             """
 
+    # PAKEISTA: EL. LAIŠKO PORAŠTĖJE (ŽEMIAU) PRIDĖTAS DUBLIUOTAS ISSN NUMERIS
     email_html += """
         <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; font-size: 12px; color: #999;">
+            <strong style="color: #444; font-size: 14px;">ISSN 3120-9696</strong><br><br>
             Išsiųsta naudojant Bernardinai.lt automatizaciją.<br><br>
             <a href="{$url}" style="color: #999; text-decoration: underline;">Peržiūrėti naršyklėje</a> &nbsp;|&nbsp; 
             <a href="{$unsubscribe}" style="color: #999; text-decoration: underline;">Atsisakyti naujienlaiškio</a>
@@ -497,7 +497,7 @@ if api_key:
             if campaign_id:
                 payload_content = {
                     "html": email_html,
-                    "plain": f"Naujausias Kultūros savaitraštis jau paruoštas!\n\nAtsisiųsti PDF galite čia: {pdf_url}\n\nPeržiūrėti naršyklėje: {{$url}}\nAtsisakyti naujienlaiškio: {{$unsubscribe}}"
+                    "plain": f"Naujausias Kultūros savaitraštis jau paruoštas!\n\nAtsisiųsti PDF galite čia: {pdf_url}\n\nISSN: 3120-9696\n\nPeržiūrėti naršyklėje: {{$url}}\nAtsisakyti naujienlaiškio: {{$unsubscribe}}"
                 }
                 
                 req_content = urllib.request.Request(f'https://api.mailerlite.com/api/v2/campaigns/{campaign_id}/content', 
