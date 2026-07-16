@@ -31,19 +31,31 @@ jobs:
           python -m pip install --upgrade pip
           pip install feedparser weasyprint tzdata
 
-      - name: 5. Generuojamas savaitraštis
+      - name: 5. Generuojamas savaitraštis ir paruošiamas aplankas siuntimui
         env:
           MAILERLITE_API_KEY: ${{ secrets.MAILERLITE_API_KEY }}
           EVENT_NAME: ${{ github.event_name }}
-        run: python naujienlaiskis.py
+        run: |
+          python naujienlaiskis.py
+          mkdir -p upload_folder
+          cp kulturos_savaitrastis_*.pdf upload_folder/
 
-      - name: 6. Išsaugomas PDF atgal į repozitoriją
+      - name: 6. Automatiškai įkeliama į Bernardinai.lt serverį per FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./upload_folder/
+          server-dir: ./
+
+      - name: 7. Išsaugomas tik numeracijos skaitiklis atgal į GitHub
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add kulturos_savaitrastis_zurnalas.pdf leidinio_numeris.txt
+          git add leidinio_numeris.txt
           if ! git diff --staged --quiet; then
-            git commit -m "Automatinis PDF savaitraščio sukūrimas"
+            git commit -m "Automatinis leidinio numerio atnaujinimas"
             git pull --rebase origin main
             git push
           fi
