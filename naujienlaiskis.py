@@ -374,11 +374,18 @@ html_kodas += """
 </body></html>
 """
 
+# === AUTOMATINIS ARCHYVO KŪRIMAS ===
+os.makedirs('archyvas', exist_ok=True) # Sukuria aplanką, jei jo nėra
 pdf_failas = 'kulturos_savaitrastis_zurnalas.pdf'
-print("Generuojamas modernus PDF failas (WeasyPrint)...")
+pdf_archyvas = f'archyvas/kulturos_savaitrastis_{today_str}.pdf'
+
+print("Generuojami PDF failai...")
 try:
+    # 1. Sugeneruojame pagrindinį failą nuorodai el. laiške
     HTML(string=html_kodas).write_pdf(pdf_failas)
-    print(f">>>> Sėkmingai sukurta: {pdf_failas}")
+    # 2. Sugeneruojame kopiją su data archyvui
+    HTML(string=html_kodas).write_pdf(pdf_archyvas)
+    print(f">>>> Sėkmingai sukurta: {pdf_failas} bei {pdf_archyvas}")
 except Exception as e:
     print(">>> GRIEŽTA KLAIDA GENERUOJANT PDF:")
     traceback.print_exc()
@@ -411,7 +418,7 @@ api_key = os.environ.get('MAILERLITE_API_KEY')
 if api_key:
     print("Kuriamas ir siunčiamas MailerLite laiškas...")
     
-    # 🌟 NAUJA, AKLINAI APSAUGOTA NUORODA PER GITHUB PAGES 🌟
+    # NAUJA, AKLINAI APSAUGOTA NUORODA PER GITHUB PAGES
     pdf_url = "https://bernardinai.github.io/bernardinai/kulturos_savaitrastis_zurnalas.pdf"
     
     email_html = f"""<!DOCTYPE html>
