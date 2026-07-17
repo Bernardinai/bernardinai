@@ -337,18 +337,17 @@ html_kodas += """
                     <p><strong>Vytautas Markevičius</strong><br>Žurnalistas<br>vytautas.markevicius@bernardinai.lt</p>
                     <p><strong>Austina Pakalnytė</strong><br>Žurnalistė<br>austina.pakalnyte@bernardinai.lt</p>
                     <p><strong>Tomas Kemzūra</strong><br>Žurnalistas<br>tomas.kemzura@bernardinai.lt</p>
-                    <p><strong>Laima Šiušaitė</strong><br>Kalbos redaktorė<br>laima.siusaite@bernardinai.lt</p>
+                    <p><strong>Laima Šiušaitė</strong><br>Aktualijų redaktorė<br>laima.siusaite@bernardinai.lt</p>
                 </td>
                 <td width="50%" valign="top" style="padding-left: 20px;">
                     <div style="font-size: 14pt; color: #111; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 5px;">Bendradarbiai</div>
-                    <p><strong>Darius Indrišionis</strong><br>Tekstų autorius</p>
-                    <p><strong>Evgenia Levin</strong><br>Fotografė<br>el@zeneka.lt</p>
                     <p><strong>Rasa Baškienė</strong><br>Tekstų autorė<br>rasa@bernardinai.lt</p>
-                    <p><strong>Gediminas Zelvaras</strong><br>Tekstų autorius<br>gediminaszelvaras22@gmail.com</p>
-                    <p><strong>Ugnė Tulaitė</strong><br>Tekstų autorė</p>
+                    <p><strong>Ugnė Tulaitė</strong><br>Tekstų autorė</br>ugne.tulaite@bernardinai.lt</p>
                     <p><strong>Saulena Žiugždaitė</strong><br>Tekstų autorė<br>saulena@bernardinai.lt</p>
-                    <p><strong>Aurelija Plokštytė</strong><br>Tekstų autorė<br>aurelija.plokstyte@bernardinai.lt</p>
+                    <p><strong>Gediminas Zelvaras</strong><br>Tekstų autorius<br>gediminaszelvaras22@gmail.com</p>
+                    <p><strong>Darius Indrišionis</strong><br>Tekstų autorius</p>
                     <p><strong>Teodoras Žukas</strong><br>Tekstų autorius<br>teodoras.zukas@gmail.com</p>
+                    <p><strong>Evgenia Levin</strong><br>Fotografė<br>el@zeneka.lt</p>
                     
                     <div style="font-size: 14pt; color: #111; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 20px;">Administracija</div>
                     <p><strong>Juozas Ruzgys</strong><br>Direktorius<br>juozas.ruzgys@bernardinai.lt</p>
