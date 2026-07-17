@@ -361,10 +361,12 @@ html_kodas += """
 </body></html>
 """
 
-os.makedirs('archyvas', exist_ok=True)
-pdf_archyvas = f'archyvas/kulturos_savaitrastis_{today_str}.pdf'
+# === AUTOMATINIS ARCHYVO KŪRIMAS PAGAL METUS ===
+metu_aplankas = f'archyvas/{current_year}'
+os.makedirs(metu_aplankas, exist_ok=True)
+pdf_archyvas = f'{metu_aplankas}/kulturos_savaitrastis_{today_str}.pdf'
 
-print("Generuojamas PDF failas archyvui...")
+print(f"Generuojamas PDF failas {current_year} metų archyvui...")
 try:
     HTML(string=html_kodas).write_pdf(pdf_archyvas)
     print(f">>>> Sėkmingai sukurta: {pdf_archyvas}")
@@ -394,7 +396,8 @@ api_key = os.environ.get('MAILERLITE_API_KEY')
 if api_key:
     print("Kuriamas ir siunčiamas MailerLite laiškas...")
     
-    pdf_url = f"https://www.bernardinai.lt/savaitrastis/kulturos_savaitrastis_{today_str}.pdf"
+    # Pridedame metus prie nuorodos į serverį!
+    pdf_url = f"https://www.bernardinai.lt/savaitrastis/{current_year}/kulturos_savaitrastis_{today_str}.pdf"
     
     email_html = f"""<!DOCTYPE html>
 <html>
