@@ -12,9 +12,6 @@ import urllib.request
 import urllib.error
 from zoneinfo import ZoneInfo
 
-# ==========================================
-# 0. IŠMANI LAIKO PATIKRA (VASAROS/ŽIEMOS LAIKUI)
-# ==========================================
 event_name = os.environ.get('EVENT_NAME', '')
 
 if event_name == 'schedule':
@@ -23,9 +20,6 @@ if event_name == 'schedule':
         print(f"Dabar Lietuvoje yra {lt_time.hour} val. Agentas ilsisi, nes laiškus siunčiame tik lygiai 08:00 val.")
         sys.exit(0)
 
-# ==========================================
-# 1. KONFIGŪRACIJA IR DATOS
-# ==========================================
 today = datetime.datetime.now()
 today_str = today.strftime("%Y-%m-%d")
 one_week_ago = today - timedelta(days=7)
@@ -35,7 +29,6 @@ menesiai = ["sausio", "vasario", "kovo", "balandžio", "gegužės", "birželio",
 leidinio_data = f"{today.year} m. {menesiai[today.month - 1]} {today.day} d."
 savaites_laikotarpis = f"{one_week_ago.year} m. {menesiai[one_week_ago.month - 1]} {one_week_ago.day} d. – {today.year} m. {menesiai[today.month - 1]} {today.day} d."
 
-# === IŠMANIOJI LEIDINIO NUMERIO LOGIKA ===
 tracker_file = 'leidinio_numeris.txt'
 current_year = today.year
 numeris = 1
@@ -69,9 +62,6 @@ if os.path.exists(logo_failas):
         encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
         logo_src = f"data:image/png;base64,{encoded_string}"
 
-# ==========================================
-# 2. RSS SRAUTŲ NUSKAITYMAS IR RŪŠIAVIMAS
-# ==========================================
 matyti_url = set()
 pagrindiniai_straipsniai = []
 kiti_straipsniai = []
@@ -157,9 +147,6 @@ kiti_straipsniai.sort(key=lambda x: x['pub_date_obj'])
 
 print(f"Iš viso atrinkta: {len(pagrindiniai_straipsniai)} pagrindinių ir {len(kiti_straipsniai)} papildomų straipsnių.")
 
-# ==========================================
-# 3. HTML DIZAINAS IR GENERAVIMAS
-# ==========================================
 cover_bg_image = ""
 for straipsnis in reversed(pagrindiniai_straipsniai):
     if straipsnis.get('image'):
@@ -374,26 +361,16 @@ html_kodas += """
 </body></html>
 """
 
-# === AUTOMATINIS ARCHYVO KŪRIMAS ===
-os.makedirs('archyvas', exist_ok=True) # Sukuria aplanką, jei jo nėra
 pdf_failas = 'kulturos_savaitrastis_zurnalas.pdf'
-pdf_archyvas = f'archyvas/kulturos_savaitrastis_{today_str}.pdf'
-
 print("Generuojami PDF failai...")
 try:
-    # 1. Sugeneruojame pagrindinį failą nuorodai el. laiške
     HTML(string=html_kodas).write_pdf(pdf_failas)
-    # 2. Sugeneruojame kopiją su data archyvui
-    HTML(string=html_kodas).write_pdf(pdf_archyvas)
-    print(f">>>> Sėkmingai sukurta: {pdf_failas} bei {pdf_archyvas}")
+    print(f">>>> Sėkmingai sukurta: {pdf_failas}")
 except Exception as e:
     print(">>> GRIEŽTA KLAIDA GENERUOJANT PDF:")
     traceback.print_exc()
     sys.exit(1)
 
-# ==========================================
-# 4. IŠSAUGOME LEIDINIO NUMERĮ KITAM KARTUI
-# ==========================================
 if event_name == 'schedule':
     try:
         with open(tracker_file, 'w', encoding='utf-8') as f:
@@ -410,16 +387,12 @@ else:
             pass
     print(">>> RANKINIS PALEIDIMAS: Naudotas 'Bandomasis' numeris, atmintis neatnaujinama.")
 
-# ==========================================
-# 5. MAILERLITE LAIŠKO KŪRIMAS IR IŠSIUNTIMAS
-# ==========================================
 api_key = os.environ.get('MAILERLITE_API_KEY')
 
 if api_key:
     print("Kuriamas ir siunčiamas MailerLite laiškas...")
     
-    # NAUJA, AKLINAI APSAUGOTA NUORODA PER GITHUB PAGES
-    pdf_url = "https://bernardinai.github.io/bernardinai/kulturos_savaitrastis_zurnalas.pdf"
+    pdf_url = "https://www.bernardinai.lt/savaitrastis/kulturos_savaitrastis_zurnalas.pdf"
     
     email_html = f"""<!DOCTYPE html>
 <html>
