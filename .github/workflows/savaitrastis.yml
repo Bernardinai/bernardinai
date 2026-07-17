@@ -2,7 +2,6 @@ name: Savaitrascio Generatorius
 
 on:
   schedule:
-    # Žadiname agentą ir 05:00, ir 06:00 UTC (šeštadienį)
     - cron: '0 5,6 * * 6'
   workflow_dispatch:
 
@@ -21,7 +20,7 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: 3. Diegiamos Linux sistemos bibliotekos (WeasyPrint varikliui)
+      - name: 3. Diegiamos Linux sistemos bibliotekos
         run: |
           sudo apt-get update
           sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0
@@ -37,13 +36,22 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
         run: python naujienlaiskis.py
 
-      - name: 6. Išsaugomas PDF ir skaitiklis atgal į repozitoriją
+      - name: 6. Išsaugomas PDF repozitorijoje
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add kulturos_savaitrastis_zurnalas.pdf leidinio_numeris.txt archyvas/
+          git add kulturos_savaitrastis_zurnalas.pdf leidinio_numeris.txt
           if ! git diff --staged --quiet; then
-            git commit -m "Automatinis PDF savaitraščio sukūrimas, archyvavimas ir skaitiklio atnaujinimas"
+            git commit -m "Automatinis PDF sukūrimas"
             git pull --rebase origin main
             git push
           fi
+
+      - name: 7. FTP įkėlimas į serverį
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./
+          server-dir: public_html/savaitrastis/ # Pakeiskite į savo anksčiau naudotą tikslų kelią, jei jis skyrėsi
