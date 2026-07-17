@@ -337,7 +337,7 @@ html_kodas += """
                     <p><strong>Vytautas Markevičius</strong><br>Žurnalistas<br>vytautas.markevicius@bernardinai.lt</p>
                     <p><strong>Austina Pakalnytė</strong><br>Žurnalistė<br>austina.pakalnyte@bernardinai.lt</p>
                     <p><strong>Tomas Kemzūra</strong><br>Žurnalistas<br>tomas.kemzura@bernardinai.lt</p>
-                    <p><strong>Laima Šiušaitė</strong><br>Aktualijų redaktorė<br>laima.siusaite@bernardinai.lt</p>
+                    <p><strong>Laima Šiušaitė</strong><br>Dienos redaktorė<br>laima.siusaite@bernardinai.lt</p>
                 </td>
                 <td width="50%" valign="top" style="padding-left: 20px;">
                     <div style="font-size: 14pt; color: #111; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 5px;">Bendradarbiai</div>
