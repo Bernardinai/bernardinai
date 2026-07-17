@@ -361,11 +361,13 @@ html_kodas += """
 </body></html>
 """
 
-pdf_failas = 'kulturos_savaitrastis_zurnalas.pdf'
-print("Generuojami PDF failai...")
+os.makedirs('archyvas', exist_ok=True)
+pdf_archyvas = f'archyvas/kulturos_savaitrastis_{today_str}.pdf'
+
+print("Generuojamas PDF failas archyvui...")
 try:
-    HTML(string=html_kodas).write_pdf(pdf_failas)
-    print(f">>>> Sėkmingai sukurta: {pdf_failas}")
+    HTML(string=html_kodas).write_pdf(pdf_archyvas)
+    print(f">>>> Sėkmingai sukurta: {pdf_archyvas}")
 except Exception as e:
     print(">>> GRIEŽTA KLAIDA GENERUOJANT PDF:")
     traceback.print_exc()
@@ -392,7 +394,7 @@ api_key = os.environ.get('MAILERLITE_API_KEY')
 if api_key:
     print("Kuriamas ir siunčiamas MailerLite laiškas...")
     
-    pdf_url = "https://www.bernardinai.lt/savaitrastis/kulturos_savaitrastis_zurnalas.pdf"
+    pdf_url = f"https://www.bernardinai.lt/savaitrastis/kulturos_savaitrastis_{today_str}.pdf"
     
     email_html = f"""<!DOCTYPE html>
 <html>
