@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tikras_leidinys:
-        description: 'Pažymėti, jei norite išleisti TIKRĄ numerį'
+        description: 'Pazymeti, jei norite isleisti TIKRA numeri'
         required: true
         type: boolean
         default: false
@@ -18,10 +18,10 @@ jobs:
   kurti-pdf:
     runs-on: ubuntu-latest
     steps:
-      - name: 1. Atsisiunčiami repozitorijos failai
+      - name: 1. Atsisiunciami repozitorijos failai
         uses: actions/checkout@v4
 
-      - name: 2. Paruošiama Python aplinka
+      - name: 2. Paruosiama Python aplinka
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
@@ -36,14 +36,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install feedparser weasyprint tzdata
 
-      - name: 5. Generuojamas savaitraštis
+      - name: 5. Generuojamas savaitrastis
         env:
           MAILERLITE_API_KEY: ${{ secrets.MAILERLITE_API_KEY }}
           EVENT_NAME: ${{ github.event_name }}
           TIKRAS_LEIDINYS: ${{ github.event.inputs.tikras_leidinys }}
         run: python naujienlaiskis.py
 
-      - name: 6. Išsaugomas archyvas repozitorijoje
+      - name: 6. Issaugomas archyvas repozitorijoje
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
@@ -54,7 +54,7 @@ jobs:
             git push
           fi
 
-      - name: 7. FTP įkėlimas į serverį
+      - name: 7. FTP ikelimas i serveri
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
           server: ${{ secrets.FTP_SERVER }}
