@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: '0 5,6 * * 6'
   workflow_dispatch:
+    inputs:
+      tikras_leidinys:
+        description: 'Pažymėti, jei norite išleisti TIKRĄ numerį'
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -34,6 +40,7 @@ jobs:
         env:
           MAILERLITE_API_KEY: ${{ secrets.MAILERLITE_API_KEY }}
           EVENT_NAME: ${{ github.event_name }}
+          TIKRAS_LEIDINYS: ${{ github.event.inputs.tikras_leidinys }}
         run: python naujienlaiskis.py
 
       - name: 6. Išsaugomas archyvas repozitorijoje
