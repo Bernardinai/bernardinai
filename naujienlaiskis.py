@@ -13,6 +13,8 @@ import urllib.error
 from zoneinfo import ZoneInfo
 
 event_name = os.environ.get('EVENT_NAME', '')
+force_real = os.environ.get('TIKRAS_LEIDINYS', 'false').lower() == 'true'
+is_real_run = (event_name == 'schedule') or force_real
 
 if event_name == 'schedule':
     lt_time = datetime.datetime.now(ZoneInfo("Europe/Vilnius"))
@@ -33,7 +35,7 @@ tracker_file = 'leidinio_numeris.txt'
 current_year = today.year
 numeris = 1
 
-if event_name == 'schedule':
+if is_real_run:
     if os.path.exists(tracker_file):
         try:
             with open(tracker_file, 'r', encoding='utf-8') as f:
@@ -337,17 +339,18 @@ html_kodas += """
                     <p><strong>Vytautas Markevičius</strong><br>Žurnalistas<br>vytautas.markevicius@bernardinai.lt</p>
                     <p><strong>Austina Pakalnytė</strong><br>Žurnalistė<br>austina.pakalnyte@bernardinai.lt</p>
                     <p><strong>Tomas Kemzūra</strong><br>Žurnalistas<br>tomas.kemzura@bernardinai.lt</p>
-                    <p><strong>Laima Šiušaitė</strong><br>Dienos redaktorė<br>laima.siusaite@bernardinai.lt</p>
+                    <p><strong>Laima Šiušaitė</strong><br>Kalbos redaktorė<br>laima.siusaite@bernardinai.lt</p>
                 </td>
                 <td width="50%" valign="top" style="padding-left: 20px;">
                     <div style="font-size: 14pt; color: #111; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 5px;">Bendradarbiai</div>
-                    <p><strong>Rasa Baškienė</strong><br>Tekstų autorė<br>rasa@bernardinai.lt</p>
-                    <p><strong>Ugnė Tulaitė</strong><br>Tekstų autorė</br>ugne.tulaite@bernardinai.lt</p>
-                    <p><strong>Saulena Žiugždaitė</strong><br>Tekstų autorė<br>saulena@bernardinai.lt</p>
-                    <p><strong>Gediminas Zelvaras</strong><br>Tekstų autorius<br>gediminaszelvaras22@gmail.com</p>
                     <p><strong>Darius Indrišionis</strong><br>Tekstų autorius</p>
-                    <p><strong>Teodoras Žukas</strong><br>Tekstų autorius<br>teodoras.zukas@gmail.com</p>
                     <p><strong>Evgenia Levin</strong><br>Fotografė<br>el@zeneka.lt</p>
+                    <p><strong>Rasa Baškienė</strong><br>Tekstų autorė<br>rasa@bernardinai.lt</p>
+                    <p><strong>Gediminas Zelvaras</strong><br>Tekstų autorius<br>gediminaszelvaras22@gmail.com</p>
+                    <p><strong>Ugnė Tulaitė</strong><br>Tekstų autorė</p>
+                    <p><strong>Saulena Žiugždaitė</strong><br>Tekstų autorė<br>saulena@bernardinai.lt</p>
+                    <p><strong>Aurelija Plokštytė</strong><br>Tekstų autorė<br>aurelija.plokstyte@bernardinai.lt</p>
+                    <p><strong>Teodoras Žukas</strong><br>Tekstų autorius<br>teodoras.zukas@gmail.com</p>
                     
                     <div style="font-size: 14pt; color: #111; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 20px;">Administracija</div>
                     <p><strong>Juozas Ruzgys</strong><br>Direktorius<br>juozas.ruzgys@bernardinai.lt</p>
@@ -360,7 +363,6 @@ html_kodas += """
 </body></html>
 """
 
-# === AUTOMATINIS ARCHYVO KŪRIMAS PAGAL METUS ===
 metu_aplankas = f'archyvas/{current_year}'
 os.makedirs(metu_aplankas, exist_ok=True)
 pdf_archyvas = f'{metu_aplankas}/kulturos_savaitrastis_{today_str}.pdf'
@@ -374,11 +376,11 @@ except Exception as e:
     traceback.print_exc()
     sys.exit(1)
 
-if event_name == 'schedule':
+if is_real_run:
     try:
         with open(tracker_file, 'w', encoding='utf-8') as f:
             f.write(f"{current_year}/{numeris}/{today_str}")
-        print(">>> AUTOMATINIS PALEIDIMAS: Leidinio numeris atnaujintas ir išsaugotas.")
+        print(">>> TIKRAS PALEIDIMAS: Leidinio numeris atnaujintas ir išsaugotas.")
     except Exception as e:
         print(f"Nepavyko išsaugoti numerio failo: {e}")
 else:
@@ -388,14 +390,13 @@ else:
                 f.write(f"{current_year}/0/2000-01-01")
         except Exception:
             pass
-    print(">>> RANKINIS PALEIDIMAS: Naudotas 'Bandomasis' numeris, atmintis neatnaujinama.")
+    print(">>> BANDOMASIS PALEIDIMAS: Naudotas 'Bandomasis' numeris, atmintis neatnaujinama.")
 
 api_key = os.environ.get('MAILERLITE_API_KEY')
 
 if api_key:
     print("Kuriamas ir siunčiamas MailerLite laiškas...")
     
-    # Pridedame metus prie nuorodos į serverį!
     pdf_url = f"https://www.bernardinai.lt/savaitrastis/{current_year}/kulturos_savaitrastis_{today_str}.pdf"
     
     email_html = f"""<!DOCTYPE html>
@@ -497,7 +498,7 @@ if api_key:
                 with urllib.request.urlopen(req_content) as resp_content:
                     print(">>> MailerLite laiško turinys įkeltas!")
                     
-                if event_name == 'schedule':
+                if is_real_run:
                     req_send = urllib.request.Request(f'https://api.mailerlite.com/api/v2/campaigns/{campaign_id}/actions/send', 
                                          data=json.dumps({}).encode('utf-8'),
                                          headers={
@@ -508,9 +509,9 @@ if api_key:
                                          method='POST')
                     
                     with urllib.request.urlopen(req_send) as resp_send:
-                        print(">>> AUTOMATINIS PALEIDIMAS: MailerLite kampanija sėkmingai perkelta į OUTBOX (pradėta siųsti)!")
+                        print(">>> TIKRAS PALEIDIMAS: MailerLite kampanija sėkmingai perkelta į OUTBOX (pradėta siųsti)!")
                 else:
-                    print(">>> RANKINIS PALEIDIMAS: Laiškas paliktas kaip Juodraštis (Draft).")
+                    print(">>> BANDOMASIS PALEIDIMAS: Laiškas paliktas kaip Juodraštis (Draft).")
                     
     except urllib.error.HTTPError as e:
         error_msg = e.read().decode('utf-8')
