@@ -6,7 +6,7 @@ import time
 import feedparser
 import urllib.request
 from PIL import Image, ImageDraw, ImageFont, ImageOps
-from moviepy.editor import ImageClip
+from moviepy.editor import ImageClip, CompositeVideoClip
 
 # Nustatymai
 RSS_URL = "https://www.bernardinai.lt/?feed=mailerlite"
@@ -31,9 +31,14 @@ def main():
     latest_link = latest_entry.link
     latest_title = html.unescape(latest_entry.title)
 
-    # Inicialų ir brūkšnelių išlaikymas
+    # Išlaikome inicialus ir dvigubas pavardes
     latest_title = latest_title.replace('. ', '.\u00A0')
     latest_title = latest_title.replace('-', '- ')
+
+    # Kategorijos išgavimas
+    category = "NAUJIENA"
+    if 'tags' in latest_entry and len(latest_entry.tags) > 0:
+        category = latest_entry.tags[0].term.upper()
 
     old_link = ""
     if os.path.exists(TXT_FILE):
@@ -67,37 +72,22 @@ def main():
             print(f"Nepavyko atsisiųsti nuotraukos: {e}")
 
     width, height = 1920, 1080
-    bg_color = (122, 34, 34) 
-    image_canvas = Image.new("RGB", (width, height), bg_color)
-    draw = ImageDraw.Draw(image_canvas)
+    
+    # 1. UI SLUOKSNIS (Permatomas, statinis)
+    ui_canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(ui_canvas)
+    
+    # Gradientas įskaitomumui
+    start_fade = width // 3
+    for x in range(width):
+        if x > start_fade:
+            opacity = min(240, int(240 * ((x - start_fade) / (width - start_fade))))
+            draw.line([(x, 0), (x, height)], fill=(122, 34, 34, opacity))
 
-    has_image = False
-    if os.path.exists(IMAGE_FILE):
-        try:
-            article_img = Image.open(IMAGE_FILE).convert("RGB")
-            # Nuotrauka per visą ekraną
-            article_img = ImageOps.fit(article_img, (width, height), method=Image.Resampling.LANCZOS)
-            image_canvas.paste(article_img, (0, 0))
-            
-            # Permatomas gradientas
-            gradient = Image.new('RGBA', (width, height), (0, 0, 0, 0))
-            draw_grad = ImageDraw.Draw(gradient)
-            
-            start_fade = width // 3
-            for x in range(width):
-                if x > start_fade:
-                    opacity = min(240, int(240 * ((x - start_fade) / (width - start_fade))))
-                    draw_grad.line([(x, 0), (x, height)], fill=(122, 34, 34, opacity))
-                    
-            image_canvas = Image.alpha_composite(image_canvas.convert('RGBA'), gradient).convert('RGB')
-            draw = ImageDraw.Draw(image_canvas)
-            has_image = True
-        except:
-            pass
+    center_x = 1440
+    max_text_width = 820
 
-    center_x = 1440 if has_image else 960
-    max_text_width = 820 if has_image else 1700
-
+    # Logotipas
     logo_bottom_y = 100
     if os.path.exists(LOGO_FILE):
         try:
@@ -109,8 +99,8 @@ def main():
             padding_x = 30
             padding_y = 20
             bg_box = [logo_x - padding_x, logo_y - padding_y, logo_x + logo.width + padding_x, logo_y + logo.height + padding_y]
-            draw.rounded_rectangle(bg_box, radius=15, fill=(255, 255, 255))
-            image_canvas.paste(logo, (logo_x, logo_y), logo)
+            draw.rounded_rectangle(bg_box, radius=15, fill=(255, 255, 255, 255))
+            ui_canvas.paste(logo, (logo_x, logo_y), logo)
             
             logo_bottom_y = logo_y + logo.height + padding_y
         except:
@@ -119,12 +109,20 @@ def main():
     if not os.path.exists(FONT_TITLE_FILE):
         sys.exit(1)
 
-    font_sub_size = 40
-    font_sub = ImageFont.truetype(FONT_SUB_FILE, font_sub_size)
-    url_y = 1000
-    draw.text((center_x, url_y), "www.bernardinai.lt", font=font_sub, fill=(255, 255, 255), anchor="mm")
+    # CTA raginimas
+    font_cta = ImageFont.truetype(FONT_TITLE_FILE, 35)
+    cta_text = "SKAITYKITE PORTALE BERNARDINAI.LT"
+    cta_bbox = draw.textbbox((0, 0), cta_text, font=font_cta)
+    cta_w = cta_bbox[2] - cta_bbox[0]
+    cta_h = cta_bbox[3] - cta_bbox[1]
+    cta_y = 1000
+    
+    cta_box = [center_x - cta_w//2 - 30, cta_y - 20, center_x + cta_w//2 + 30, cta_y + cta_h + 20]
+    draw.rounded_rectangle(cta_box, radius=10, fill=(255, 255, 255, 255))
+    draw.text((center_x, cta_y), cta_text, font=font_cta, fill=(122, 34, 34, 255), anchor="mt")
 
-    available_height = url_y - logo_bottom_y - 80 
+    # Teksto skaičiavimas ir išdėstymas
+    available_height = cta_y - logo_bottom_y - 120 
     font_size = 90 
     lines = []
     
@@ -155,20 +153,55 @@ def main():
             
         font_size -= 5 
 
-    start_y = logo_bottom_y + 40 + (available_height - total_text_height) / 2
+    start_y = logo_bottom_y + 80 + (available_height - total_text_height) / 2
     
+    # Kategorijos ženkliukas
+    font_cat = ImageFont.truetype(FONT_TITLE_FILE, 30)
+    cat_bbox = draw.textbbox((0, 0), category, font=font_cat)
+    cat_w = cat_bbox[2] - cat_bbox[0]
+    cat_h = cat_bbox[3] - cat_bbox[1]
+    cat_box = [center_x - cat_w//2 - 20, start_y - cat_h - 50, center_x + cat_w//2 + 20, start_y - 20]
+    draw.rounded_rectangle(cat_box, radius=8, fill=(255, 200, 0, 255))
+    draw.text((center_x, start_y - cat_h - 35), category, font=font_cat, fill=(0, 0, 0, 255), anchor="mt")
+
+    # Pavadinimas su šešėliais
     for line in lines:
-        draw.text((center_x, start_y), line, font=font_title, fill=(255, 255, 255), anchor="ma")
+        draw.text((center_x + 4, start_y + 4), line, font=font_title, fill=(0, 0, 0, 200), anchor="ma")
+        draw.text((center_x, start_y), line, font=font_title, fill=(255, 255, 255, 255), anchor="ma")
         start_y += line_spacing
 
-    frame_path = "temp_frame.png"
-    image_canvas.save(frame_path)
+    ui_path = "ui_layer.png"
+    ui_canvas.save(ui_path)
 
-    clip = ImageClip(frame_path).set_duration(10)
-    clip.write_videofile(VIDEO_FILE, fps=24, codec="libx264", audio=False)
+    # 2. FONO SLUOKSNIS IR ANIMACIJA
+    bg_clip = None
+    if os.path.exists(IMAGE_FILE):
+        try:
+            article_img = Image.open(IMAGE_FILE).convert("RGB")
+            article_img = ImageOps.fit(article_img, (width, height), method=Image.Resampling.LANCZOS)
+            bg_path = "bg_layer.jpg"
+            article_img.save(bg_path)
+            
+            # Dinaminis priartinimas (Ken Burns efektas)
+            bg_clip = ImageClip(bg_path).set_duration(10)
+            bg_clip = bg_clip.resize(lambda t: 1 + 0.015 * t).set_position(('center', 'center'))
+        except:
+            pass
+    
+    if not bg_clip:
+        fallback_bg = "fallback_bg.jpg"
+        Image.new("RGB", (width, height), (122, 34, 34)).save(fallback_bg)
+        bg_clip = ImageClip(fallback_bg).set_duration(10)
 
-    if os.path.exists(frame_path): os.remove(frame_path)
-    if os.path.exists(IMAGE_FILE): os.remove(IMAGE_FILE)
+    ui_clip = ImageClip(ui_path).set_duration(10)
+    
+    # 3. KOMPOZICIJA
+    final_video = CompositeVideoClip([bg_clip, ui_clip], size=(width, height))
+    final_video.write_videofile(VIDEO_FILE, fps=24, codec="libx264", audio=False)
+
+    # Apsivalymas
+    for temp_file in [ui_path, "bg_layer.jpg", "fallback_bg.jpg", IMAGE_FILE]:
+        if os.path.exists(temp_file): os.remove(temp_file)
 
     with open(TXT_FILE, "w", encoding="utf-8") as f:
         f.write(latest_link)
