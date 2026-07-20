@@ -5,8 +5,9 @@ import html
 import time
 import feedparser
 import urllib.request
+import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageOps
-from moviepy.editor import ImageClip, CompositeVideoClip
+from moviepy.editor import VideoClip, ImageClip, CompositeVideoClip
 
 # Nustatymai
 RSS_URL = "https://www.bernardinai.lt/?feed=mailerlite"
@@ -159,19 +160,33 @@ def main():
     ui_path = "ui_layer.png"
     ui_canvas.save(ui_path)
 
-    # 2. FONO SLUOKSNIS IR ANIMACIJA
+    # 2. FONO SLUOKSNIS IR ANIMACIJA (PATIKIMAS METODAS)
     bg_clip = None
     if os.path.exists(IMAGE_FILE):
         try:
             article_img = Image.open(IMAGE_FILE).convert("RGB")
             article_img = ImageOps.fit(article_img, (width, height), method=Image.Resampling.LANCZOS)
-            bg_path = "bg_layer.jpg"
-            article_img.save(bg_path)
             
-            # Padidintas dinaminis priartinimas, kad efektas būtų aiškiai matomas
-            bg_clip = ImageClip(bg_path).set_duration(10)
-            bg_clip = bg_clip.resize(lambda t: 1 + 0.04 * t).set_position(('center', 'center'))
-        except:
+            # Dinaminis priartinimas su kadrų generatoriumi
+            def make_zoom_frame(t):
+                # Priartinimas nuo 100% iki 140% per 10 sekundžių
+                zoom = 1 + 0.04 * t
+                new_w = int(width * zoom)
+                new_h = int(height * zoom)
+                
+                # Resampling.BILINEAR yra greitesnis ir puikiai tinka animacijai
+                img_resized = article_img.resize((new_w, new_h), Image.Resampling.BILINEAR)
+                
+                # Apkerpame išlaikant centrą
+                left = (new_w - width) // 2
+                top = (new_h - height) // 2
+                img_cropped = img_resized.crop((left, top, left + width, top + height))
+                
+                return np.array(img_cropped)
+
+            bg_clip = VideoClip(make_zoom_frame, duration=10)
+        except Exception as e:
+            print(f"Klaida generuojant animaciją: {e}")
             pass
     
     if not bg_clip:
@@ -186,7 +201,7 @@ def main():
     final_video.write_videofile(VIDEO_FILE, fps=24, codec="libx264", audio=False)
 
     # Apsivalymas
-    for temp_file in [ui_path, "bg_layer.jpg", "fallback_bg.jpg", IMAGE_FILE]:
+    for temp_file in [ui_path, "fallback_bg.jpg", IMAGE_FILE]:
         if os.path.exists(temp_file): os.remove(temp_file)
 
     with open(TXT_FILE, "w", encoding="utf-8") as f:
