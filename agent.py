@@ -107,7 +107,7 @@ def main():
 
     # CTA raginimas
     font_cta = ImageFont.truetype(FONT_TITLE_FILE, 35)
-    cta_text = "SKAITYKITE PORTALE BERNARDINAI.LT"
+    cta_text = "SKAITYKITE BERNARDINAI.LT"
     cta_bbox = draw.textbbox((0, 0), cta_text, font=font_cta)
     cta_w = cta_bbox[2] - cta_bbox[0]
     cta_h = cta_bbox[3] - cta_bbox[1]
