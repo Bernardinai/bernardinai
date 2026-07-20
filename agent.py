@@ -6,7 +6,7 @@ import time
 import feedparser
 import urllib.request
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
 from moviepy.editor import VideoClip, ImageClip, CompositeVideoClip
 
 # Nustatymai
@@ -160,27 +160,30 @@ def main():
     ui_path = "ui_layer.png"
     ui_canvas.save(ui_path)
 
-    # 2. FONO SLUOKSNIS IR ANIMACIJA (PATIKIMAS METODAS)
+    # 2. FONO SLUOKSNIS IR ANIMACIJA
     bg_clip = None
     if os.path.exists(IMAGE_FILE):
         try:
             article_img = Image.open(IMAGE_FILE).convert("RGB")
             article_img = ImageOps.fit(article_img, (width, height), method=Image.Resampling.LANCZOS)
             
-            # Dinaminis priartinimas su kadrų generatoriumi
+            # Dinaminis priartinimas su fono suliejimu
             def make_zoom_frame(t):
                 # Priartinimas nuo 100% iki 140% per 10 sekundžių
                 zoom = 1 + 0.04 * t
                 new_w = int(width * zoom)
                 new_h = int(height * zoom)
                 
-                # Resampling.BILINEAR yra greitesnis ir puikiai tinka animacijai
                 img_resized = article_img.resize((new_w, new_h), Image.Resampling.BILINEAR)
                 
-                # Apkerpame išlaikant centrą
                 left = (new_w - width) // 2
                 top = (new_h - height) // 2
                 img_cropped = img_resized.crop((left, top, left + width, top + height))
+                
+                # Tolygus suliejimas, didėjantis bėgant laikui
+                blur_radius = t * 0.4 
+                if blur_radius > 0:
+                    img_cropped = img_cropped.filter(ImageFilter.GaussianBlur(blur_radius))
                 
                 return np.array(img_cropped)
 
@@ -194,7 +197,8 @@ def main():
         Image.new("RGB", (width, height), (122, 34, 34)).save(fallback_bg)
         bg_clip = ImageClip(fallback_bg).set_duration(10)
 
-    ui_clip = ImageClip(ui_path).set_duration(10)
+    # UI sluoksnio išnirimas per pirmąją 1.5 sekundės
+    ui_clip = ImageClip(ui_path).set_duration(10).crossfadein(1.5)
     
     # 3. KOMPOZICIJA
     final_video = CompositeVideoClip([bg_clip, ui_clip], size=(width, height))
