@@ -167,10 +167,12 @@ def main():
             article_img = Image.open(IMAGE_FILE).convert("RGB")
             article_img = ImageOps.fit(article_img, (width, height), method=Image.Resampling.LANCZOS)
             
-            # Dinaminis priartinimas su fono suliejimu
+            # Dinaminis priartinimas su fono suliejimu ir klaidos apsauga
             def make_zoom_frame(t):
-                # Priartinimas nuo 100% iki 140% per 10 sekundžių
-                zoom = 1 + 0.04 * t
+                # Saugiai išpakuojame laiką į paprastą skaičių
+                t_val = float(np.asarray(t).flatten()[0])
+                
+                zoom = 1 + 0.04 * t_val
                 new_w = int(width * zoom)
                 new_h = int(height * zoom)
                 
@@ -180,8 +182,7 @@ def main():
                 top = (new_h - height) // 2
                 img_cropped = img_resized.crop((left, top, left + width, top + height))
                 
-                # Tolygus suliejimas, didėjantis bėgant laikui
-                blur_radius = t * 0.4 
+                blur_radius = float(t_val * 0.4)
                 if blur_radius > 0:
                     img_cropped = img_cropped.filter(ImageFilter.GaussianBlur(blur_radius))
                 
