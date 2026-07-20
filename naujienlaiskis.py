@@ -312,7 +312,7 @@ if kiti_straipsniai:
     </div>
     """
 
-html_kodas += """
+html_kodas += f"""
     <div class="contacts-page">
         <h1 style="border-bottom: 2px solid #7a2222; padding-bottom: 10px; margin-bottom: 20px;">Redakcija ir kontaktai</h1>
         <div style="font-size: 11pt; line-height: 1.6; margin-bottom: 30px; text-align: left;">
@@ -359,6 +359,9 @@ html_kodas += """
                 </td>
             </tr>
         </table>
+        <div style="margin-top: 50px; text-align: center; font-size: 9pt; color: #777; border-top: 1px solid #eaeaea; padding-top: 15px;">
+            © {current_year} VŠĮ BERNARDINAI.LT. Visos teisės saugomos. Griežtai draudžiama „Bernardinai.lt“ paskelbtą informaciją panaudoti kitose interneto svetainėse, žiniasklaidos priemonėse ar kitur be raštiško redakcijos sutikimo.
+        </div>
     </div>
 </body></html>
 """
@@ -445,12 +448,13 @@ if api_key:
             </div>
             """
 
-    email_html += """
+    email_html += f"""
         <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; font-size: 12px; color: #999;">
             <strong style="color: #444; font-size: 14px;">ISSN 3120-9696</strong><br><br>
+            © {current_year} VŠĮ BERNARDINAI.LT. Visos teisės saugomos.<br>
             Išsiųsta naudojant Bernardinai.lt automatizaciją.<br><br>
-            <a href="{$url}" style="color: #999; text-decoration: underline;">Peržiūrėti naršyklėje</a> &nbsp;|&nbsp; 
-            <a href="{$unsubscribe}" style="color: #999; text-decoration: underline;">Atsisakyti naujienlaiškio</a>
+            <a href="{{$url}}" style="color: #999; text-decoration: underline;">Peržiūrėti naršyklėje</a> &nbsp;|&nbsp; 
+            <a href="{{$unsubscribe}}" style="color: #999; text-decoration: underline;">Atsisakyti naujienlaiškio</a>
         </div>
     </div>
 </body>
