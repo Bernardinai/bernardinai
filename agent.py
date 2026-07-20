@@ -19,10 +19,7 @@ FONT_TITLE_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 FONT_SUB_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
 def main():
-    # 1. ANTI-CACHE GUDYRBĖ: Prisistatome kaip tikra naršyklė
     feedparser.USER_AGENT = "BernardinaiVideoBot/1.0"
-    
-    # 2. ANTI-CACHE GUDRYBĖ: Pridedame unikalų laiko kodą, kad gautume pačią naujausią RSS versiją
     dynamic_url = f"{RSS_URL}&nocache={int(time.time())}"
     
     feed = feedparser.parse(dynamic_url)
@@ -33,6 +30,10 @@ def main():
     latest_entry = feed.entries[0]
     latest_link = latest_entry.link
     latest_title = html.unescape(latest_entry.title)
+
+    # Inicialų ir brūkšnelių išlaikymas
+    latest_title = latest_title.replace('. ', '.\u00A0')
+    latest_title = latest_title.replace('-', '- ')
 
     old_link = ""
     if os.path.exists(TXT_FILE):
@@ -45,7 +46,6 @@ def main():
 
     print(f"Kuriame video: {latest_title}")
 
-    # Nuotraukos paieška
     image_url = None
     if 'media_content' in latest_entry and len(latest_entry.media_content) > 0:
         image_url = latest_entry.media_content[0].get('url')
@@ -60,14 +60,12 @@ def main():
 
     if image_url:
         try:
-            # Nuotraukos atsisiuntimui taip pat pridedame naršyklės antraštę
             req = urllib.request.Request(image_url, headers={'User-Agent': 'BernardinaiVideoBot/1.0'})
             with urllib.request.urlopen(req) as response, open(IMAGE_FILE, 'wb') as out_file:
                 out_file.write(response.read())
         except Exception as e:
             print(f"Nepavyko atsisiųsti nuotraukos: {e}")
 
-    # Ekrano paruošimas
     width, height = 1920, 1080
     bg_color = (122, 34, 34) 
     image_canvas = Image.new("RGB", (width, height), bg_color)
@@ -77,8 +75,22 @@ def main():
     if os.path.exists(IMAGE_FILE):
         try:
             article_img = Image.open(IMAGE_FILE).convert("RGB")
-            article_img = ImageOps.fit(article_img, (960, 1080), method=Image.Resampling.LANCZOS)
+            # Nuotrauka per visą ekraną
+            article_img = ImageOps.fit(article_img, (width, height), method=Image.Resampling.LANCZOS)
             image_canvas.paste(article_img, (0, 0))
+            
+            # Permatomas gradientas
+            gradient = Image.new('RGBA', (width, height), (0, 0, 0, 0))
+            draw_grad = ImageDraw.Draw(gradient)
+            
+            start_fade = width // 3
+            for x in range(width):
+                if x > start_fade:
+                    opacity = min(240, int(240 * ((x - start_fade) / (width - start_fade))))
+                    draw_grad.line([(x, 0), (x, height)], fill=(122, 34, 34, opacity))
+                    
+            image_canvas = Image.alpha_composite(image_canvas.convert('RGBA'), gradient).convert('RGB')
+            draw = ImageDraw.Draw(image_canvas)
             has_image = True
         except:
             pass
@@ -86,7 +98,6 @@ def main():
     center_x = 1440 if has_image else 960
     max_text_width = 820 if has_image else 1700
 
-    # Logotipo piešimas su baltu fonu
     logo_bottom_y = 100
     if os.path.exists(LOGO_FILE):
         try:
@@ -108,20 +119,18 @@ def main():
     if not os.path.exists(FONT_TITLE_FILE):
         sys.exit(1)
 
-    # Apatinio adreso piešimas
     font_sub_size = 40
     font_sub = ImageFont.truetype(FONT_SUB_FILE, font_sub_size)
     url_y = 1000
     draw.text((center_x, url_y), "www.bernardinai.lt", font=font_sub, fill=(255, 255, 255), anchor="mm")
 
-    # Dinaminis šrifto dydžio skaičiavimas
     available_height = url_y - logo_bottom_y - 80 
     font_size = 90 
     lines = []
     
     while font_size > 20:
         font_title = ImageFont.truetype(FONT_TITLE_FILE, font_size)
-        words = latest_title.split()
+        words = [w for w in latest_title.split(' ') if w]
         test_lines = []
         current_line = ""
         
