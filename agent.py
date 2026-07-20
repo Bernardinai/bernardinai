@@ -167,9 +167,7 @@ def main():
             article_img = Image.open(IMAGE_FILE).convert("RGB")
             article_img = ImageOps.fit(article_img, (width, height), method=Image.Resampling.LANCZOS)
             
-            # Dinaminis priartinimas su fono suliejimu ir klaidos apsauga
             def make_zoom_frame(t):
-                # Saugiai išpakuojame laiką į paprastą skaičių
                 t_val = float(np.asarray(t).flatten()[0])
                 
                 zoom = 1 + 0.04 * t_val
@@ -182,8 +180,9 @@ def main():
                 top = (new_h - height) // 2
                 img_cropped = img_resized.crop((left, top, left + width, top + height))
                 
-                blur_radius = float(t_val * 0.4)
-                if blur_radius > 0:
+                # Suliejimas pradedamas taikyti tik po 2 sekundžių (kad nebūtų per staigus perėjimas) ir padaromas švelnesnis.
+                if t_val > 2:
+                    blur_radius = float((t_val - 2) * 0.2) 
                     img_cropped = img_cropped.filter(ImageFilter.GaussianBlur(blur_radius))
                 
                 return np.array(img_cropped)
@@ -198,8 +197,8 @@ def main():
         Image.new("RGB", (width, height), (122, 34, 34)).save(fallback_bg)
         bg_clip = ImageClip(fallback_bg).set_duration(10)
 
-    # UI sluoksnio išnirimas per pirmąją 1.5 sekundės
-    ui_clip = ImageClip(ui_path).set_duration(10).crossfadein(1.5)
+    # UI sluoksnio rodymas su uždelsimu: prasideda nuo 3 sekundės ir trunka likusias 7 sekundes, o paties išnirimo trukmė yra 1.5 sek.
+    ui_clip = ImageClip(ui_path).set_start(3).set_duration(7).crossfadein(1.5)
     
     # 3. KOMPOZICIJA
     final_video = CompositeVideoClip([bg_clip, ui_clip], size=(width, height))
