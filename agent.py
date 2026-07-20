@@ -35,11 +35,6 @@ def main():
     latest_title = latest_title.replace('. ', '.\u00A0')
     latest_title = latest_title.replace('-', '- ')
 
-    # Kategorijos išgavimas
-    category = "NAUJIENA"
-    if 'tags' in latest_entry and len(latest_entry.tags) > 0:
-        category = latest_entry.tags[0].term.upper()
-
     old_link = ""
     if os.path.exists(TXT_FILE):
         with open(TXT_FILE, "r", encoding="utf-8") as f:
@@ -122,7 +117,7 @@ def main():
     draw.text((center_x, cta_y), cta_text, font=font_cta, fill=(122, 34, 34, 255), anchor="mt")
 
     # Teksto skaičiavimas ir išdėstymas
-    available_height = cta_y - logo_bottom_y - 120 
+    available_height = cta_y - logo_bottom_y - 80 
     font_size = 90 
     lines = []
     
@@ -153,17 +148,8 @@ def main():
             
         font_size -= 5 
 
-    start_y = logo_bottom_y + 80 + (available_height - total_text_height) / 2
+    start_y = logo_bottom_y + 40 + (available_height - total_text_height) / 2
     
-    # Kategorijos ženkliukas
-    font_cat = ImageFont.truetype(FONT_TITLE_FILE, 30)
-    cat_bbox = draw.textbbox((0, 0), category, font=font_cat)
-    cat_w = cat_bbox[2] - cat_bbox[0]
-    cat_h = cat_bbox[3] - cat_bbox[1]
-    cat_box = [center_x - cat_w//2 - 20, start_y - cat_h - 50, center_x + cat_w//2 + 20, start_y - 20]
-    draw.rounded_rectangle(cat_box, radius=8, fill=(255, 200, 0, 255))
-    draw.text((center_x, start_y - cat_h - 35), category, font=font_cat, fill=(0, 0, 0, 255), anchor="mt")
-
     # Pavadinimas su šešėliais
     for line in lines:
         draw.text((center_x + 4, start_y + 4), line, font=font_title, fill=(0, 0, 0, 200), anchor="ma")
@@ -182,9 +168,9 @@ def main():
             bg_path = "bg_layer.jpg"
             article_img.save(bg_path)
             
-            # Dinaminis priartinimas (Ken Burns efektas)
+            # Padidintas dinaminis priartinimas, kad efektas būtų aiškiai matomas
             bg_clip = ImageClip(bg_path).set_duration(10)
-            bg_clip = bg_clip.resize(lambda t: 1 + 0.015 * t).set_position(('center', 'center'))
+            bg_clip = bg_clip.resize(lambda t: 1 + 0.04 * t).set_position(('center', 'center'))
         except:
             pass
     
