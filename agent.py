@@ -197,7 +197,7 @@ def main():
         Image.new("RGB", (width, height), (122, 34, 34)).save(fallback_bg)
         bg_clip = ImageClip(fallback_bg).set_duration(10)
 
-    # UI sluoksnio rodymas su uždelsimu: prasideda nuo 3 sekundės ir trunka likusias 7 sekundes, o paties išnirimo trukmė yra 1.5 sek.
+    # UI sluoksnio rodymas su uždelsimu: prasideda nuo 2 sekundės ir trunka likusias 8 sekundes, o paties išnirimo trukmė yra 1.5 sek.
     ui_clip = ImageClip(ui_path).set_start(2).set_duration(8).crossfadein(1.5)
     
     # 3. KOMPOZICIJA
