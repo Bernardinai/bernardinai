@@ -198,7 +198,7 @@ def main():
         bg_clip = ImageClip(fallback_bg).set_duration(10)
 
     # UI sluoksnio rodymas su uždelsimu: prasideda nuo 3 sekundės ir trunka likusias 7 sekundes, o paties išnirimo trukmė yra 1.5 sek.
-    ui_clip = ImageClip(ui_path).set_start(3).set_duration(7).crossfadein(1.5)
+    ui_clip = ImageClip(ui_path).set_start(2).set_duration(8).crossfadein(1.5)
     
     # 3. KOMPOZICIJA
     final_video = CompositeVideoClip([bg_clip, ui_clip], size=(width, height))
