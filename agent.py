@@ -59,29 +59,37 @@ def main():
         if img_match:
             image_url = img_match.group(1)
 
+    has_image = False
     if image_url:
         try:
             req = urllib.request.Request(image_url, headers={'User-Agent': 'BernardinaiVideoBot/1.0'})
             with urllib.request.urlopen(req) as response, open(IMAGE_FILE, 'wb') as out_file:
                 out_file.write(response.read())
+            
+            # Patikriname, ar failas tikrai yra vaizdas
+            Image.open(IMAGE_FILE).verify()
+            has_image = True
         except Exception as e:
-            print(f"Nepavyko atsisiųsti nuotraukos: {e}")
+            print(f"Nepavyko atsisiųsti ar atidaryti nuotraukos: {e}")
+            has_image = False
 
     width, height = 1920, 1080
+    
+    # Prisitaikantis išdėstymas: jei nėra nuotraukos, tekstą centruojame per visą ekraną
+    center_x = 1440 if has_image else 960
+    max_text_width = 820 if has_image else 1700
     
     # 1. UI SLUOKSNIS (Permatomas, statinis)
     ui_canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(ui_canvas)
     
-    # Gradientas įskaitomumui
-    start_fade = width // 3
-    for x in range(width):
-        if x > start_fade:
-            opacity = min(240, int(240 * ((x - start_fade) / (width - start_fade))))
-            draw.line([(x, 0), (x, height)], fill=(122, 34, 34, opacity))
-
-    center_x = 1440
-    max_text_width = 820
+    # Gradientas įskaitomumui (piešiamas tik jei yra nuotrauka)
+    if has_image:
+        start_fade = width // 3
+        for x in range(width):
+            if x > start_fade:
+                opacity = min(240, int(240 * ((x - start_fade) / (width - start_fade))))
+                draw.line([(x, 0), (x, height)], fill=(122, 34, 34, opacity))
 
     # Logotipas
     logo_bottom_y = 100
@@ -107,7 +115,7 @@ def main():
 
     # CTA raginimas
     font_cta = ImageFont.truetype(FONT_TITLE_FILE, 35)
-    cta_text = "SKAITYKITE BERNARDINAI.LT"
+    cta_text = "SKAITYKITE PORTALE BERNARDINAI.LT"
     cta_bbox = draw.textbbox((0, 0), cta_text, font=font_cta)
     cta_w = cta_bbox[2] - cta_bbox[0]
     cta_h = cta_bbox[3] - cta_bbox[1]
@@ -162,7 +170,7 @@ def main():
 
     # 2. FONO SLUOKSNIS IR ANIMACIJA
     bg_clip = None
-    if os.path.exists(IMAGE_FILE):
+    if has_image:
         try:
             article_img = Image.open(IMAGE_FILE).convert("RGB")
             article_img = ImageOps.fit(article_img, (width, height), method=Image.Resampling.LANCZOS)
@@ -180,7 +188,6 @@ def main():
                 top = (new_h - height) // 2
                 img_cropped = img_resized.crop((left, top, left + width, top + height))
                 
-                # Suliejimas pradedamas taikyti tik po 2 sekundžių (kad nebūtų per staigus perėjimas) ir padaromas švelnesnis.
                 if t_val > 2:
                     blur_radius = float((t_val - 2) * 0.2) 
                     img_cropped = img_cropped.filter(ImageFilter.GaussianBlur(blur_radius))
@@ -192,12 +199,13 @@ def main():
             print(f"Klaida generuojant animaciją: {e}")
             pass
     
+    # Jei nuotraukos nėra arba jos nepavyko apdoroti, naudojame vientisą spalvą
     if not bg_clip:
         fallback_bg = "fallback_bg.jpg"
         Image.new("RGB", (width, height), (122, 34, 34)).save(fallback_bg)
         bg_clip = ImageClip(fallback_bg).set_duration(10)
 
-    # UI sluoksnio rodymas su uždelsimu: prasideda nuo 2 sekundės ir trunka likusias 8 sekundes, o paties išnirimo trukmė yra 1.5 sek.
+    # UI sluoksnio rodymas su uždelsimu: prasideda nuo 2 sekundės
     ui_clip = ImageClip(ui_path).set_start(2).set_duration(8).crossfadein(1.5)
     
     # 3. KOMPOZICIJA
