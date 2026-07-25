@@ -18,8 +18,8 @@ is_real_run = (event_name == 'schedule') or force_real
 
 if event_name == 'schedule':
     lt_time = datetime.datetime.now(ZoneInfo("Europe/Vilnius"))
-    if lt_time.hour != 8:
-        print(f"Dabar Lietuvoje yra {lt_time.hour} val. Agentas ilsisi, nes laiškus siunčiame tik lygiai 08:00 val.")
+    if not (6 <= lt_time.hour <= 10):
+        print(f"Dabar Lietuvoje yra {lt_time.hour} val. Agentas ilsisi, nes siuntimo laikas yra tarp 06:00 ir 10:00 val.")
         sys.exit(0)
 
 today = datetime.datetime.now()
