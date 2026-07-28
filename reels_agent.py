@@ -16,7 +16,7 @@ RSS_URL = "https://www.bernardinai.lt/?feed=mailerlite"
 VIDEO_FILE = "bernardinai_dienos_apzvalga.mp4"
 LOGO_FILE = "logo.png"
 BG_MUSIC_FILE = "bg_music.mp3"
-AI_LABEL_FILE = "LABEL_AI_black transparent 1.png" # Naujas nustatymas DI žymėjimui
+AI_LABEL_FILE = "LABEL_AI_black transparent 1.png"
 MAX_ARTICLES = 4
 
 FONT_TITLE_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
@@ -108,8 +108,14 @@ def main():
         title = html.unescape(entry.title).replace('. ', '.\u00A0').replace('-', '- ')
         full_text = entry.get('description', '') + " " + str(entry.get('content', ''))
         
+        # 1. Sugeneruojame tekstą
         ai_sentence = generate_ai_sentence(title, full_text)
         summary_text = f"{ai_sentence} Išsamiau skaitykite portale Bernardinai.lt!"
+
+        # 2. PRIDEDAME PAUZĘ, KAD NEGAUTUME API BLOKO IŠ GOOGLE
+        if index < MAX_ARTICLES - 1:
+            print("Pauzė 15 sek. dėl API limitų...")
+            time.sleep(15)
 
         audio_file = f"temp_audio_{index}.mp3"
         spoken_text = f"{title}. {summary_text}"
@@ -151,7 +157,6 @@ def main():
                     opacity = min(245, int(245 * ((y - start_fade) / (height - start_fade))))
                     draw.line([(0, y), (width, y)], fill=(20, 20, 20, opacity))
 
-        # 1. Pridedamas Logotipas
         if os.path.exists(LOGO_FILE):
             try:
                 logo = Image.open(LOGO_FILE).convert("RGBA")
@@ -165,18 +170,16 @@ def main():
             except:
                 pass
 
-        # 2. Pridedamas DI žymėjimas (kairėje apačioje)
         if os.path.exists(AI_LABEL_FILE):
             try:
                 ai_label = Image.open(AI_LABEL_FILE).convert("RGBA")
-                ai_label.thumbnail((120, 120)) # Sumažiname, kad neatrodytų per didelis
+                ai_label.thumbnail((120, 120)) 
                 padding_x = 60
-                padding_y = height - ai_label.height - 200 # Pakeliame virš socialinių tinklų aprašymų
+                padding_y = height - ai_label.height - 200 
                 ui_canvas.paste(ai_label, (padding_x, padding_y), ai_label)
             except Exception as e:
-                print(f"Nepavyko uždėti DI žymos: {e}")
+                pass
 
-        # Tekstų laužymas
         title_lines = wrap_text(title, font_title, max_text_width, draw)
         summary_lines = wrap_text(summary_text, font_summary, max_text_width, draw)
 
@@ -198,7 +201,6 @@ def main():
             draw.text((center_x, start_y), line, font=font_summary, fill=(210, 210, 210, 255), anchor="ma")
             start_y += summary_spacing
 
-        # Indikatorius apačioje centre
         counter_text = f"{index + 1} / {MAX_ARTICLES}"
         draw.rounded_rectangle([center_x - 60, height - 120, center_x + 60, height - 60], radius=8, fill=(122, 34, 34, 255))
         draw.text((center_x, height - 105), counter_text, font=font_cta, fill=(255, 255, 255, 255), anchor="mt")
