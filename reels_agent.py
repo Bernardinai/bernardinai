@@ -25,7 +25,7 @@ FONT_SUB_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 def generate_audio(text, output_filename):
     api_key = os.environ.get("ELEVENLABS_API_KEY")
     if not api_key:
-        print("!!! KLAIDA: Nerastas ELEVENLABS_API_KEY.")
+        print("!!! KLAIDA: Nerastas ELEVENLABS_API_KEY aplinkos kintamasis.")
         return False
         
     url = "https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM"
@@ -48,7 +48,10 @@ def generate_audio(text, output_filename):
             f.write(response.read())
         return True
     except Exception as e:
-        print(f"!!! KLAIDA GENERUOJANT BALSĄ: {e}")
+        error_msg = str(e)
+        if hasattr(e, 'read'):
+            error_msg += " - " + e.read().decode('utf-8')
+        print(f"!!! KLAIDA GENERUOJANT BALSĄ: {error_msg}")
         return False
 
 def wrap_text(text, font, max_width, draw):
@@ -111,12 +114,27 @@ def main():
             clip_duration = 5.0
 
         image_url = None
+        
+        # 1. Pirmas būdas: ieškome "media_content"
         if 'media_content' in entry and len(entry.media_content) > 0:
             image_url = entry.media_content[0].get('url')
+            
+        # 2. Antras būdas: ieškome "enclosure" (prisegtukai)
+        if not image_url and 'links' in entry:
+            for link in entry.links:
+                if link.get('rel') == 'enclosure' and 'image' in link.get('type', ''):
+                    image_url = link.get('href')
+                    break
+                    
+        # 3. Trečias būdas: ieškome <img> žymių aprašyme arba pilname tekste
         if not image_url:
-            full_text = entry.get('description', '') + " " + str(entry.get('content', ''))
+            full_text = entry.get('description', '')
+            if 'content' in entry:
+                for c in entry.content:
+                    full_text += " " + c.value
             img_match = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', full_text, re.IGNORECASE)
-            if img_match: image_url = img_match.group(1)
+            if img_match: 
+                image_url = img_match.group(1)
 
         temp_img_file = f"temp_img_{index}.jpg"
         has_image = False
