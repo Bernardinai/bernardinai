@@ -3,12 +3,16 @@ import re
 import sys
 import html
 import time
+from datetime import datetime
 import feedparser
 import urllib.request
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
 from moviepy.editor import VideoClip, ImageClip, CompositeVideoClip, concatenate_videoclips, AudioFileClip, CompositeAudioClip
 import moviepy.audio.fx.all as afx
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
 
 # --- NUSTATYMAI ---
 RSS_URL = "https://www.bernardinai.lt/?feed=mailerlite"
@@ -25,7 +29,6 @@ def generate_audio(text, output_filename):
     try:
         with open("temp_text.txt", "w", encoding="utf-8") as f:
             f.write(text)
-        # Grąžintas patikimas Microsoft Ona balsas
         os.system(f'edge-tts --voice lt-LT-OnaNeural -f temp_text.txt --write-media {output_filename}')
         return os.path.exists(output_filename)
     except:
@@ -45,6 +48,45 @@ def wrap_text(text, font, max_width, draw):
             current_line = word
     if current_line: lines.append(current_line)
     return lines
+
+def upload_to_youtube(video_file, video_title, video_description):
+    client_id = os.environ.get("YOUTUBE_CLIENT_ID")
+    client_secret = os.environ.get("YOUTUBE_CLIENT_SECRET")
+    refresh_token = os.environ.get("YOUTUBE_REFRESH_TOKEN")
+    
+    if not (client_id and client_secret and refresh_token):
+        print("!!! Nerasti YouTube prisijungimo raktai.")
+        return
+        
+    try:
+        creds = Credentials(
+            token=None,
+            refresh_token=refresh_token,
+            client_id=client_id,
+            client_secret=client_secret,
+            token_uri="https://oauth2.googleapis.com/token"
+        )
+        youtube = build("youtube", "v3", credentials=creds)
+        
+        body = {
+            "snippet": {
+                "title": video_title,
+                "description": video_description,
+                "tags": ["naujienos", "apžvalga", "bernardinai", "shorts", "lietuva", "katalikai"],
+                "categoryId": "25" 
+            },
+            "status": {
+                "privacyStatus": "public",
+                "selfDeclaredMadeForKids": False
+            }
+        }
+        
+        media = MediaFileUpload(video_file, chunksize=-1, resumable=True, mimetype="video/mp4")
+        request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
+        response = request.execute()
+        print(f"Vaizdo įrašas sėkmingai įkeltas! YouTube ID: {response.get('id')}")
+    except Exception as e:
+        print(f"!!! Klaida įkeliant į YouTube: {e}")
 
 def main():
     feedparser.USER_AGENT = "BernardinaiVideoBot/1.0"
@@ -67,10 +109,16 @@ def main():
     font_summary = ImageFont.truetype(FONT_SUB_FILE, 42)
     font_cta = ImageFont.truetype(FONT_TITLE_FILE, 35)
 
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    youtube_title = f"Bernardinai.lt dienos apžvalga ({today_str}) #Shorts"
+    youtube_desc = "Svarbiausios dienos naujienos iš portalo Bernardinai.lt:\n\n"
+
     for index, entry in enumerate(articles_to_process):
         title = html.unescape(entry.title).replace('. ', '.\u00A0').replace('-', '- ')
+        article_link = entry.get('link', 'https://www.bernardinai.lt')
         
-        # Paliekame trumpus, dinamiškus tekstus "Reels" formatui
+        youtube_desc += f"• {title}\nSkaitykite: {article_link}\n\n"
+        
         if index == 0:
             spoken_text = f"Šiandien Bernardinuose skaitykite: {title}."
             summary_text = "Šiandien Bernardinuose skaitykite:"
@@ -93,7 +141,6 @@ def main():
 
         image_url = None
         
-        # Patobulinta nuotraukų paieška
         if 'media_content' in entry and len(entry.media_content) > 0:
             image_url = entry.media_content[0].get('url')
             
@@ -223,6 +270,8 @@ def main():
 
         video_clips.append(final_clip)
 
+    youtube_desc += "\nŠiuos straipsnius (o ir kur kas daugiau) raskite atsivertę portalą Bernardinai.lt!\n"
+
     final_video = concatenate_videoclips(video_clips, method="compose")
 
     if os.path.exists(BG_MUSIC_FILE):
@@ -235,7 +284,6 @@ def main():
         else:
             final_video = final_video.set_audio(bg_audio)
 
-    # Greitas atvaizdavimas (render) paliktas
     final_video.write_videofile(VIDEO_FILE, fps=24, codec="libx264", audio_codec="aac", preset="ultrafast", threads=2)
 
     for i in range(MAX_ARTICLES):
@@ -243,6 +291,9 @@ def main():
             if os.path.exists(f): os.remove(f)
     if os.path.exists("temp_text.txt"):
         os.remove("temp_text.txt")
+
+    print("Pradedamas vaizdo įrašo įkėlimas į YouTube...")
+    upload_to_youtube(VIDEO_FILE, youtube_title, youtube_desc)
 
 if __name__ == "__main__":
     main()
