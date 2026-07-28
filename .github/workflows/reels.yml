@@ -17,7 +17,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get install -y fonts-dejavu
-        pip install feedparser Pillow moviepy edge-tts numpy google-api-python-client google-auth-httplib2 google-auth-oauthlib
+        pip install feedparser Pillow moviepy==1.0.3 edge-tts numpy google-api-python-client google-auth-httplib2 google-auth-oauthlib
     - name: Run script
       env:
         YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
