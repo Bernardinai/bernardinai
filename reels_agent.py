@@ -7,19 +7,53 @@ import feedparser
 import urllib.request
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
-from moviepy.editor import VideoClip, ImageClip, CompositeVideoClip, concatenate_videoclips
+from moviepy.editor import VideoClip, ImageClip, CompositeVideoClip, concatenate_videoclips, AudioFileClip
+import google.generativeai as genai
+from gtts import gTTS
 
 # --- NUSTATYMAI ---
 RSS_URL = "https://www.bernardinai.lt/?feed=mailerlite"
 VIDEO_FILE = "bernardinai_dienos_apzvalga.mp4"
 LOGO_FILE = "logo.png"
 MAX_ARTICLES = 4
-CLIP_DURATION = 10 # Kiekvieno straipsnio rodymo trukmė sekundėmis
 
 FONT_TITLE_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 FONT_SUB_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
-# Pagalbinė funkcija teksto laužymui
+# Gemini API konfigūracija
+GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
+if GEMINI_KEY:
+    genai.configure(api_key=GEMINI_KEY)
+
+def generate_ai_summary(title, full_text):
+    """Generuoja 2 trumpų sakinių santrauką naudojant Gemini AI"""
+    if not GEMINI_KEY:
+        return "Svarbus šiandienos tekstas. Kviečiame skaityti portale Bernardinai.lt."
+    try:
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        prompt = (
+            f"Tu esi Bernardinai.lt žurnalistas. Parašyk LABAI TRUMPĄ (maksimaliai 2 sakiniai, iki 20 žodžių) "
+            f"intriguojančią ir profesionalią santrauką lietuviškai šiam straipsniui. "
+            f"Nenaudok kabučių ar pavadinimo atkartojimo. "
+            f"Straipsnio antraštė: {title}. Tekstas: {full_text[:1000]}"
+        )
+        response = model.generate_content(prompt)
+        res_text = response.text.strip().replace('\n', ' ')
+        return res_text if res_text else "Svarbus šiandienos tekstas. Skaitykite daugiau portale Bernardinai.lt."
+    except Exception as e:
+        print(f"Gemini API klaida: {e}")
+        return "Svarbus šiandienos tekstas. Skaitykite daugiau portale Bernardinai.lt."
+
+def generate_audio(text, output_filename):
+    """Generuoja garso failą lietuvių kalba"""
+    try:
+        tts = gTTS(text=text, lang='lt')
+        tts.save(output_filename)
+        return True
+    except Exception as e:
+        print(f"Klaida generuojant garsą: {e}")
+        return False
+
 def wrap_text(text, font, max_width, draw):
     words = [w for w in text.split(' ') if w]
     lines = []
@@ -44,7 +78,6 @@ def main():
         print("RSS srautas tuščias.")
         return
 
-    # Paimame 4 naujausius straipsnius
     articles_to_process = feed.entries[:MAX_ARTICLES]
     print(f"Rasta straipsnių: {len(articles_to_process)}. Pradedamas video generavimas...")
 
@@ -57,30 +90,41 @@ def main():
         print("Nerastas šriftas!")
         sys.exit(1)
 
-    font_title = ImageFont.truetype(FONT_TITLE_FILE, 70)
-    font_summary = ImageFont.truetype(FONT_SUB_FILE, 45)
+    font_title = ImageFont.truetype(FONT_TITLE_FILE, 65)
+    font_summary = ImageFont.truetype(FONT_SUB_FILE, 42)
     font_cta = ImageFont.truetype(FONT_TITLE_FILE, 35)
 
     for index, entry in enumerate(articles_to_process):
         title = html.unescape(entry.title).replace('. ', '.\u00A0').replace('-', '- ')
-        print(f"Apdorojamas [{index + 1}/{len(articles_to_process)}]: {title}")
+        full_text = entry.get('description', '') + " " + str(entry.get('content', ''))
+        
+        print(f"\n--- Apdorojamas [{index + 1}/{len(articles_to_process)}]: {title} ---")
 
-        # TODO 1: AI Teksto sutrumpinimas
-        # Čia vėliau jungsis OpenAI API, kuri paims entry.description ir pavers jį 2 sakinių intriga.
-        # Kol kas naudojame simuliaciją:
-        summary_text = "Vienas svarbiausių šios dienos tekstų, kurį privalote perskaityti. Sužinokite visas detales portale."
+        # 1. AI Santrauka
+        summary_text = generate_ai_summary(title, full_text)
+        print(f"AI Santrauka: {summary_text}")
 
-        # TODO 2: Audio generavimas (TTS)
-        # Čia vėliau jungsis ElevenLabs arba OpenAI TTS, kuris perskaitys 'title' ir 'summary_text'.
-        # Sugeneruotas garso failas bus priskiriamas prie sukurto video klipo.
+        # 2. Audio generavimas
+        audio_file = f"temp_audio_{index}.mp3"
+        spoken_text = f"{title}. {summary_text}"
+        has_audio = generate_audio(spoken_text, audio_file)
 
-        # Ieškome nuotraukos
+        # 3. Dinaminės trukmės skaičiavimas pagal garsą
+        if has_audio and os.path.exists(audio_file):
+            audio_clip = AudioFileClip(audio_file)
+            clip_duration = audio_clip.duration + 0.8  # Pridedame 0.8 s pauzę
+        else:
+            audio_clip = None
+            clip_duration = 7.0
+
+        print(f"Klipo trukmė nustatyta pagal garsą: {clip_duration:.2f} sek.")
+
+        # Nuotraukos paieška
         image_url = None
         if 'media_content' in entry and len(entry.media_content) > 0:
             image_url = entry.media_content[0].get('url')
         if not image_url:
-            content_search = entry.get('description', '') + " " + str(entry.get('content', ''))
-            img_match = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', content_search, re.IGNORECASE)
+            img_match = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', full_text, re.IGNORECASE)
             if img_match: image_url = img_match.group(1)
 
         temp_img_file = f"temp_img_{index}.jpg"
@@ -99,7 +143,6 @@ def main():
         ui_canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(ui_canvas)
         
-        # Tamsus gradientas įskaitomumui
         if has_image:
             start_fade = height // 4
             for y in range(height):
@@ -108,7 +151,6 @@ def main():
                     draw.line([(0, y), (width, y)], fill=(20, 20, 20, opacity))
 
         # Logotipas
-        logo_bottom_y = 150
         if os.path.exists(LOGO_FILE):
             try:
                 logo = Image.open(LOGO_FILE).convert("RGBA")
@@ -119,7 +161,6 @@ def main():
                 bg_box = [logo_x - padding, logo_y - padding, logo_x + logo.width + padding, logo_y + logo.height + padding]
                 draw.rounded_rectangle(bg_box, radius=12, fill=(255, 255, 255, 255))
                 ui_canvas.paste(logo, (logo_x, logo_y), logo)
-                logo_bottom_y = logo_y + logo.height + padding
             except:
                 pass
 
@@ -127,30 +168,27 @@ def main():
         title_lines = wrap_text(title, font_title, max_text_width, draw)
         summary_lines = wrap_text(summary_text, font_summary, max_text_width, draw)
 
-        # Skaičiuojame aukščius
-        title_spacing = 70 * 1.3
-        summary_spacing = 45 * 1.4
+        title_spacing = 65 * 1.3
+        summary_spacing = 42 * 1.4
         total_title_h = len(title_lines) * title_spacing
-        total_summary_h = len(summary_lines) * summary_spacing
         
-        # Išdėstome tekstą ekrano centre/apačioje
-        start_y = (height // 2) - (total_title_h // 2) + 100
+        start_y = (height // 2) - (total_title_h // 2) + 50
 
-        # Piešiame Pavadinimą
+        # Antraštė
         for line in title_lines:
             draw.text((center_x + 4, start_y + 4), line, font=font_title, fill=(0, 0, 0, 220), anchor="ma")
             draw.text((center_x, start_y), line, font=font_title, fill=(255, 255, 255, 255), anchor="ma")
             start_y += title_spacing
             
-        start_y += 40 # Tarpas tarp antraštės ir santraukos
+        start_y += 30 
         
-        # Piešiame Santrauką
+        # AI Santrauka
         for line in summary_lines:
             draw.text((center_x + 3, start_y + 3), line, font=font_summary, fill=(0, 0, 0, 220), anchor="ma")
-            draw.text((center_x, start_y), line, font=font_summary, fill=(200, 200, 200, 255), anchor="ma")
+            draw.text((center_x, start_y), line, font=font_summary, fill=(210, 210, 210, 255), anchor="ma")
             start_y += summary_spacing
 
-        # Numeracijos indikatorius (pvz., "1 iš 4")
+        # Indikatorius (1/4)
         counter_text = f"{index + 1} / {MAX_ARTICLES}"
         draw.rounded_rectangle([center_x - 60, height - 120, center_x + 60, height - 60], radius=8, fill=(122, 34, 34, 255))
         draw.text((center_x, height - 105), counter_text, font=font_cta, fill=(255, 255, 255, 255), anchor="mt")
@@ -167,56 +205,46 @@ def main():
                 
                 def make_zoom_frame(t, img=article_img):
                     t_val = float(np.asarray(t).flatten()[0])
-                    zoom = 1 + 0.04 * t_val
+                    zoom = 1 + 0.03 * t_val
                     new_w = int(width * zoom)
                     new_h = int(height * zoom)
                     img_resized = img.resize((new_w, new_h), Image.Resampling.BILINEAR)
-                    
                     left = (new_w - width) // 2
                     top = (new_h - height) // 2
                     img_cropped = img_resized.crop((left, top, left + width, top + height))
-                    
                     if t_val > 0.5:
-                        blur_radius = float((t_val - 0.5) * 0.4) 
+                        blur_radius = float((t_val - 0.5) * 0.3) 
                         img_cropped = img_cropped.filter(ImageFilter.GaussianBlur(blur_radius))
-                    
                     return np.array(img_cropped)
 
-                bg_clip = VideoClip(make_zoom_frame, duration=CLIP_DURATION)
+                bg_clip = VideoClip(make_zoom_frame, duration=clip_duration)
             except Exception as e:
-                print(f"Klaida su nuotrauka {index}: {e}")
-                pass
-        
+                print(f"Klaida apdorojant nuotrauką: {e}")
+
         if not bg_clip:
             fallback_bg = f"temp_bg_{index}.jpg"
             Image.new("RGB", (width, height), (60, 20, 20)).save(fallback_bg)
-            bg_clip = ImageClip(fallback_bg).set_duration(CLIP_DURATION)
+            bg_clip = ImageClip(fallback_bg).set_duration(clip_duration)
 
-        # Sujungiame foną ir UI. UI atsiranda iškart.
-        ui_clip = ImageClip(ui_path).set_start(0).set_duration(CLIP_DURATION).crossfadein(0.5)
-        final_clip = CompositeVideoClip([bg_clip, ui_clip], size=(width, height))
+        ui_clip = ImageClip(ui_path).set_start(0).set_duration(clip_duration).crossfadein(0.4)
         
+        # Sujungiam vaizdą su garsu
+        final_clip = CompositeVideoClip([bg_clip, ui_clip], size=(width, height))
+        if audio_clip:
+            final_clip = final_clip.set_audio(audio_clip)
+
         video_clips.append(final_clip)
 
-    # --- 4. KLIPŲ SUJUNGIMAS Į VIENĄ VIDEO ---
-    print("Sujungiami visi klipai į vieną vaizdo įrašą...")
-    # 'compose' metodas užtikrina sklandų sujungimą be klaidų
+    print("\nSujungiami visi klipai į galutinį video...")
     final_video = concatenate_videoclips(video_clips, method="compose")
-    
-    # Išsaugome galutinį rezultatą
-    final_video.write_videofile(VIDEO_FILE, fps=24, codec="libx264", audio=False)
+    final_video.write_videofile(VIDEO_FILE, fps=24, codec="libx264", audio_codec="aac")
 
-    # --- 5. APSIVALYMAS ---
-    print("Valomi laikini failai...")
+    # Apsivalymas
     for i in range(MAX_ARTICLES):
-        for prefix in ["temp_img_", "temp_ui_", "temp_bg_"]:
-            tmp_file = f"{prefix}{i}.jpg" if "bg" in prefix or "img" in prefix else f"{prefix}{i}.png"
-            if os.path.exists(tmp_file):
-                os.remove(tmp_file)
+        for f in [f"temp_img_{i}.jpg", f"temp_ui_{i}.png", f"temp_bg_{i}.jpg", f"temp_audio_{i}.mp3"]:
+            if os.path.exists(f): os.remove(f)
 
-    print(f"SĖKMĖ! Vaizdo įrašas išsaugotas kaip: {VIDEO_FILE}")
-    # TODO 3: YouTube Data API įkėlimas
-    # Čia bus funkcija upload_to_youtube(VIDEO_FILE, title="Šiandien Bernardinai.lt", tags=...)
+    print(f"\nSĖKMĖ! Vaizdo įrašas su AI tekstu ir garsu išsaugotas: {VIDEO_FILE}")
 
 if __name__ == "__main__":
     main()
