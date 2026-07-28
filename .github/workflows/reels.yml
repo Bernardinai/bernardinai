@@ -23,9 +23,9 @@ jobs:
       - name: Įdiegiame reikalingas bibliotekas
         run: |
           python -m pip install --upgrade pip
-          pip install feedparser Pillow numpy moviepy==1.0.3 google-generativeai gTTS
+          pip install feedparser Pillow numpy moviepy==1.0.3 edge-tts google-generativeai
 
-      - name: Paleidžiame Reels agentą su AI
+      - name: Paleidžiame Reels agentą
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python reels_agent.py
@@ -35,5 +35,5 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add bernardinai_dienos_apzvalga.mp4
-          git commit -m "Atnaujintas Reels vaizdo įrašas su AI" || echo "Nėra naujų pakeitimų"
+          git commit -m "Atnaujintas Reels vaizdo įrašas" || echo "Nėra jokių naujų pakeitimų"
           git push
