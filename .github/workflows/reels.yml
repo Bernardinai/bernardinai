@@ -1,0 +1,37 @@
+name: Dienos Apzvalga (Reels/Shorts)
+
+on:
+  schedule:
+    - cron: '0 12 * * *' # Automatiškai pasileis kasdien 15:00 val. Lietuvos laiku
+  workflow_dispatch: # Leidžia paleisti rankiniu būdu
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pasiimame repozitorijos failus
+        uses: actions/checkout@v3
+
+      - name: Paruošiame Python aplinką
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Įdiegiame reikalingas bibliotekas
+        run: |
+          python -m pip install --upgrade pip
+          pip install feedparser Pillow numpy moviepy
+
+      - name: Paleidžiame Reels agentą
+        run: python reels_agent.py
+
+      - name: Išsaugome sugeneruotą video atgal į GitHub
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add bernardinai_dienos_apzvalga.mp4
+          git commit -m "Atnaujintas Reels vaizdo įrašas" || echo "Nėra jokių naujų pakeitimų"
+          git push
