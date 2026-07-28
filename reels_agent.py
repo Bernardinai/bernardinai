@@ -30,7 +30,7 @@ def generate_ai_sentence(title, full_text):
     if not GEMINI_KEY:
         return "Svarbus šiandienos tekstas."
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-pro')
         prompt = (
             f"Tu esi Bernardinai.lt žurnalistas. Parašyk lygiai VIENO SAKINIO (apibendrinimo arba intriguojančio klausimo) "
             f"pristatymą šiam straipsniui. Maksimaliai 15 žodžių. Nenaudok kabučių. "
