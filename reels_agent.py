@@ -3,8 +3,9 @@ import re
 import sys
 import html
 import time
-import feedparser
+import json
 import urllib.request
+import feedparser
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
 from moviepy.editor import VideoClip, ImageClip, CompositeVideoClip, concatenate_videoclips, AudioFileClip, CompositeAudioClip
@@ -22,12 +23,32 @@ FONT_TITLE_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 FONT_SUB_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
 def generate_audio(text, output_filename):
+    api_key = os.environ.get("ELEVENLABS_API_KEY")
+    if not api_key:
+        print("!!! KLAIDA: Nerastas ELEVENLABS_API_KEY.")
+        return False
+        
+    url = "https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM"
+    headers = {
+        "Accept": "audio/mpeg",
+        "Content-Type": "application/json",
+        "xi-api-key": api_key
+    }
+    data = {
+        "text": text,
+        "model_id": "eleven_multilingual_v2",
+        "voice_settings": {
+            "stability": 0.5,
+            "similarity_boost": 0.75
+        }
+    }
     try:
-        with open("temp_text.txt", "w", encoding="utf-8") as f:
-            f.write(text)
-        os.system(f'edge-tts --voice lt-LT-OnaNeural -f temp_text.txt --write-media {output_filename}')
-        return os.path.exists(output_filename)
-    except:
+        req = urllib.request.Request(url, json.dumps(data).encode('utf-8'), headers)
+        with urllib.request.urlopen(req) as response, open(output_filename, 'wb') as f:
+            f.write(response.read())
+        return True
+    except Exception as e:
+        print(f"!!! KLAIDA GENERUOJANT BALSĄ: {e}")
         return False
 
 def wrap_text(text, font, max_width, draw):
@@ -69,7 +90,6 @@ def main():
     for index, entry in enumerate(articles_to_process):
         title = html.unescape(entry.title).replace('. ', '.\u00A0').replace('-', '- ')
         
-        # Sukuriame skirtingą įgarsinimą ir tekstą priklausomai nuo pozicijos
         if index == 0:
             spoken_text = f"Šiandien Bernardinuose skaitykite: {title}."
             summary_text = "Šiandien Bernardinuose skaitykite:"
@@ -151,7 +171,6 @@ def main():
         total_summary_h = len(summary_lines) * summary_spacing
         total_title_h = len(title_lines) * title_spacing
         
-        # Tekstas ekrane atvaizduojamas išdėstant apibendrinimą viršuje, o antraštę po juo
         start_y = (height // 2) - ((total_title_h + total_summary_h) // 2) + 50
 
         for line in summary_lines:
@@ -222,14 +241,11 @@ def main():
         else:
             final_video = final_video.set_audio(bg_audio)
 
-    # Pridėtas procesoriaus greičio optimizavimas
     final_video.write_videofile(VIDEO_FILE, fps=24, codec="libx264", audio_codec="aac", preset="ultrafast", threads=2)
 
     for i in range(MAX_ARTICLES):
         for f in [f"temp_img_{i}.jpg", f"temp_ui_{i}.png", f"temp_bg_{i}.jpg", f"temp_audio_{i}.mp3"]:
             if os.path.exists(f): os.remove(f)
-    if os.path.exists("temp_text.txt"):
-        os.remove("temp_text.txt")
 
 if __name__ == "__main__":
     main()
