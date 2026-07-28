@@ -30,11 +30,7 @@ def generate_ai_sentence(title, full_text):
     if not GEMINI_KEY:
         return "Svarbus šiandienos tekstas."
     try:
-        available_model = None
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                available_model = m.name
-                break
+        available_model = next((m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods and '2.5' not in m.name), None)
         
         if not available_model:
             print("!!! KLAIDA: API raktas neturi priėjimo prie jokių teksto generavimo modelių.")
