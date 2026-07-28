@@ -36,7 +36,7 @@ def generate_ai_sentence(title, full_text):
             f"pristatymą šiam straipsniui. Maksimaliai 15 žodžių. Nenaudok kabučių. "
             f"Straipsnio antraštė: {title}. Tekstas: {full_text[:1000]}"
         )
-        response = model.generate_content(prompt)
+        response = model.generate_content(prompt, safety_settings=[{"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"}, {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"}, {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"}, {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}])
         res_text = response.text.strip().replace('\n', ' ')
         if not res_text.endswith(('.', '!', '?')):
             res_text += "."
