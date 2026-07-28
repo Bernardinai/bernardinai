@@ -9,6 +9,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
 from moviepy.editor import VideoClip, ImageClip, CompositeVideoClip, concatenate_videoclips, AudioFileClip, CompositeAudioClip
 import moviepy.audio.fx.all as afx
+import google.generativeai as genai
 
 # --- NUSTATYMAI ---
 RSS_URL = "https://www.bernardinai.lt/?feed=mailerlite"
@@ -19,6 +20,28 @@ MAX_ARTICLES = 4
 
 FONT_TITLE_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 FONT_SUB_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+
+GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
+if GEMINI_KEY:
+    genai.configure(api_key=GEMINI_KEY)
+
+def generate_ai_sentence(title, full_text):
+    if not GEMINI_KEY:
+        return "Svarbus šiandienos tekstas."
+    try:
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        prompt = (
+            f"Tu esi Bernardinai.lt žurnalistas. Parašyk lygiai VIENO SAKINIO (apibendrinimo arba intriguojančio klausimo) "
+            f"pristatymą šiam straipsniui. Maksimaliai 15 žodžių. Nenaudok kabučių. "
+            f"Straipsnio antraštė: {title}. Tekstas: {full_text[:1000]}"
+        )
+        response = model.generate_content(prompt)
+        res_text = response.text.strip().replace('\n', ' ')
+        if not res_text.endswith(('.', '!', '?')):
+            res_text += "."
+        return res_text
+    except Exception as e:
+        return "Svarbus šiandienos tekstas."
 
 def generate_audio(text, output_filename):
     try:
@@ -67,12 +90,10 @@ def main():
 
     for index, entry in enumerate(articles_to_process):
         title = html.unescape(entry.title).replace('. ', '.\u00A0').replace('-', '- ')
+        full_text = entry.get('description', '') + " " + str(entry.get('content', ''))
         
-        excerpt = entry.get('description', '')
-        excerpt = re.sub('<[^<]+>', '', excerpt)
-        if len(excerpt) > 137:
-            excerpt = excerpt[:137] + "..."
-        summary_text = excerpt.strip()
+        ai_sentence = generate_ai_sentence(title, full_text)
+        summary_text = f"{ai_sentence} Išsamiau skaitykite portale Bernardinai.lt!"
 
         audio_file = f"temp_audio_{index}.mp3"
         spoken_text = f"{title}. {summary_text}"
@@ -89,7 +110,6 @@ def main():
         if 'media_content' in entry and len(entry.media_content) > 0:
             image_url = entry.media_content[0].get('url')
         if not image_url:
-            full_text = entry.get('description', '') + " " + str(entry.get('content', ''))
             img_match = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', full_text, re.IGNORECASE)
             if img_match: image_url = img_match.group(1)
 
