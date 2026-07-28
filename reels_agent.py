@@ -30,13 +30,31 @@ def generate_ai_sentence(title, full_text):
     if not GEMINI_KEY:
         return "Svarbus šiandienos tekstas."
     try:
-        model = genai.GenerativeModel('gemini-pro')
+        available_model = None
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                available_model = m.name
+                break
+        
+        if not available_model:
+            print("!!! KLAIDA: API raktas neturi priėjimo prie jokių teksto generavimo modelių.")
+            return "Svarbus šiandienos tekstas."
+
+        model = genai.GenerativeModel(available_model)
         prompt = (
             f"Tu esi Bernardinai.lt žurnalistas. Parašyk lygiai VIENO SAKINIO (apibendrinimo arba intriguojančio klausimo) "
             f"pristatymą šiam straipsniui. Maksimaliai 15 žodžių. Nenaudok kabučių. "
             f"Straipsnio antraštė: {title}. Tekstas: {full_text[:1000]}"
         )
-        response = model.generate_content(prompt, safety_settings=[{"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"}, {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"}, {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"}, {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}])
+        response = model.generate_content(
+            prompt,
+            safety_settings=[
+                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
+            ]
+        )
         res_text = response.text.strip().replace('\n', ' ')
         if not res_text.endswith(('.', '!', '?')):
             res_text += "."
