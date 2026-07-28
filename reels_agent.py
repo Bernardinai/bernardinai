@@ -9,7 +9,6 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
 from moviepy.editor import VideoClip, ImageClip, CompositeVideoClip, concatenate_videoclips, AudioFileClip, CompositeAudioClip
 import moviepy.audio.fx.all as afx
-import google.generativeai as genai
 
 # --- NUSTATYMAI ---
 RSS_URL = "https://www.bernardinai.lt/?feed=mailerlite"
@@ -21,43 +20,6 @@ MAX_ARTICLES = 4
 
 FONT_TITLE_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 FONT_SUB_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-
-GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
-if GEMINI_KEY:
-    genai.configure(api_key=GEMINI_KEY)
-
-def generate_ai_sentence(title, full_text):
-    if not GEMINI_KEY:
-        return "Svarbus šiandienos tekstas."
-    try:
-        available_model = next((m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods and '2.5' not in m.name), None)
-        
-        if not available_model:
-            print("!!! KLAIDA: API raktas neturi priėjimo prie jokių teksto generavimo modelių.")
-            return "Svarbus šiandienos tekstas."
-
-        model = genai.GenerativeModel(available_model)
-        prompt = (
-            f"Tu esi Bernardinai.lt žurnalistas. Parašyk lygiai VIENO SAKINIO (apibendrinimo arba intriguojančio klausimo) "
-            f"pristatymą šiam straipsniui. Maksimaliai 15 žodžių. Nenaudok kabučių. "
-            f"Straipsnio antraštė: {title}. Tekstas: {full_text[:1000]}"
-        )
-        response = model.generate_content(
-            prompt,
-            safety_settings=[
-                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
-            ]
-        )
-        res_text = response.text.strip().replace('\n', ' ')
-        if not res_text.endswith(('.', '!', '?')):
-            res_text += "."
-        return res_text
-    except Exception as e:
-        print(f"!!! KLAIDA GENERUOJANT AI TEKSTĄ: {e}")
-        return "Svarbus šiandienos tekstas."
 
 def generate_audio(text, output_filename):
     try:
@@ -106,15 +68,18 @@ def main():
 
     for index, entry in enumerate(articles_to_process):
         title = html.unescape(entry.title).replace('. ', '.\u00A0').replace('-', '- ')
-        full_text = entry.get('description', '') + " " + str(entry.get('content', ''))
         
-        # 1. Sugeneruojame tekstą
-        ai_sentence = generate_ai_sentence(title, full_text)
-        summary_text = f"{ai_sentence} Išsamiau skaitykite portale Bernardinai.lt!"
+        # Paimamas visas meta aprašymas be trumpinimo
+        raw_desc = entry.get('description', '')
+        clean_desc = re.sub('<[^<]+>', '', raw_desc).strip()
+        
+        if not clean_desc.endswith(('.', '!', '?', '...')):
+             clean_desc += "."
+             
+        summary_text = f"{clean_desc} Išsamiau skaitykite portale Bernardinai.lt!"
 
-        # 2. PRIDEDAME PAUZĘ, KAD NEGAUTUME API BLOKO IŠ GOOGLE
+        # Pridedame pauzę, kad "edge-tts" spėtų viską apdoroti ir neblokuotų užklausų
         if index < MAX_ARTICLES - 1:
-            print("Pauzė 15 sek. dėl API limitų...")
             time.sleep(15)
 
         audio_file = f"temp_audio_{index}.mp3"
@@ -132,6 +97,7 @@ def main():
         if 'media_content' in entry and len(entry.media_content) > 0:
             image_url = entry.media_content[0].get('url')
         if not image_url:
+            full_text = entry.get('description', '') + " " + str(entry.get('content', ''))
             img_match = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', full_text, re.IGNORECASE)
             if img_match: image_url = img_match.group(1)
 
