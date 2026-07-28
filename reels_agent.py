@@ -78,10 +78,6 @@ def main():
              
         summary_text = f"{clean_desc} Išsamiau skaitykite portale Bernardinai.lt!"
 
-        # Pridedame pauzę, kad "edge-tts" spėtų viską apdoroti ir neblokuotų užklausų
-        if index < MAX_ARTICLES - 1:
-            time.sleep(15)
-
         audio_file = f"temp_audio_{index}.mp3"
         spoken_text = f"{title}. {summary_text}"
         has_audio = generate_audio(spoken_text, audio_file)
@@ -223,7 +219,7 @@ def main():
         else:
             final_video = final_video.set_audio(bg_audio)
 
-    final_video.write_videofile(VIDEO_FILE, fps=24, codec="libx264", audio_codec="aac")
+    final_video.write_videofile(VIDEO_FILE, fps=24, codec="libx264", audio_codec="aac", preset="ultrafast", threads=2)
 
     for i in range(MAX_ARTICLES):
         for f in [f"temp_img_{i}.jpg", f"temp_ui_{i}.png", f"temp_bg_{i}.jpg", f"temp_audio_{i}.mp3"]:
