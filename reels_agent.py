@@ -7,51 +7,26 @@ import feedparser
 import urllib.request
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
-from moviepy.editor import VideoClip, ImageClip, CompositeVideoClip, concatenate_videoclips, AudioFileClip
-import google.generativeai as genai
-from gtts import gTTS
+from moviepy.editor import VideoClip, ImageClip, CompositeVideoClip, concatenate_videoclips, AudioFileClip, CompositeAudioClip
+import moviepy.audio.fx.all as afx
 
 # --- NUSTATYMAI ---
 RSS_URL = "https://www.bernardinai.lt/?feed=mailerlite"
 VIDEO_FILE = "bernardinai_dienos_apzvalga.mp4"
 LOGO_FILE = "logo.png"
+BG_MUSIC_FILE = "bg_music.mp3"
 MAX_ARTICLES = 4
 
 FONT_TITLE_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 FONT_SUB_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
-# Gemini API konfigūracija
-GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
-if GEMINI_KEY:
-    genai.configure(api_key=GEMINI_KEY)
-
-def generate_ai_summary(title, full_text):
-    """Generuoja 2 trumpų sakinių santrauką naudojant Gemini AI"""
-    if not GEMINI_KEY:
-        return "Svarbus šiandienos tekstas. Kviečiame skaityti portale Bernardinai.lt."
-    try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        prompt = (
-            f"Tu esi Bernardinai.lt žurnalistas. Parašyk LABAI TRUMPĄ (maksimaliai 2 sakiniai, iki 20 žodžių) "
-            f"intriguojančią ir profesionalią santrauką lietuviškai šiam straipsniui. "
-            f"Nenaudok kabučių ar pavadinimo atkartojimo. "
-            f"Straipsnio antraštė: {title}. Tekstas: {full_text[:1000]}"
-        )
-        response = model.generate_content(prompt)
-        res_text = response.text.strip().replace('\n', ' ')
-        return res_text if res_text else "Svarbus šiandienos tekstas. Skaitykite daugiau portale Bernardinai.lt."
-    except Exception as e:
-        print(f"Gemini API klaida: {e}")
-        return "Svarbus šiandienos tekstas. Skaitykite daugiau portale Bernardinai.lt."
-
 def generate_audio(text, output_filename):
-    """Generuoja garso failą lietuvių kalba"""
     try:
-        tts = gTTS(text=text, lang='lt')
-        tts.save(output_filename)
-        return True
-    except Exception as e:
-        print(f"Klaida generuojant garsą: {e}")
+        with open("temp_text.txt", "w", encoding="utf-8") as f:
+            f.write(text)
+        os.system(f'edge-tts --voice lt-LT-OnaNeural -f temp_text.txt --write-media {output_filename}')
+        return os.path.exists(output_filename)
+    except:
         return False
 
 def wrap_text(text, font, max_width, draw):
@@ -75,19 +50,15 @@ def main():
     feed = feedparser.parse(dynamic_url)
     
     if not feed.entries:
-        print("RSS srautas tuščias.")
         return
 
     articles_to_process = feed.entries[:MAX_ARTICLES]
-    print(f"Rasta straipsnių: {len(articles_to_process)}. Pradedamas video generavimas...")
-
     video_clips = []
     width, height = 1080, 1920
     center_x = width // 2
     max_text_width = 900 
 
     if not os.path.exists(FONT_TITLE_FILE):
-        print("Nerastas šriftas!")
         sys.exit(1)
 
     font_title = ImageFont.truetype(FONT_TITLE_FILE, 65)
@@ -96,34 +67,29 @@ def main():
 
     for index, entry in enumerate(articles_to_process):
         title = html.unescape(entry.title).replace('. ', '.\u00A0').replace('-', '- ')
-        full_text = entry.get('description', '') + " " + str(entry.get('content', ''))
         
-        print(f"\n--- Apdorojamas [{index + 1}/{len(articles_to_process)}]: {title} ---")
+        excerpt = entry.get('description', '')
+        excerpt = re.sub('<[^<]+>', '', excerpt)
+        if len(excerpt) > 137:
+            excerpt = excerpt[:137] + "..."
+        summary_text = excerpt.strip()
 
-        # 1. AI Santrauka
-        summary_text = generate_ai_summary(title, full_text)
-        print(f"AI Santrauka: {summary_text}")
-
-        # 2. Audio generavimas
         audio_file = f"temp_audio_{index}.mp3"
         spoken_text = f"{title}. {summary_text}"
         has_audio = generate_audio(spoken_text, audio_file)
 
-        # 3. Dinaminės trukmės skaičiavimas pagal garsą
         if has_audio and os.path.exists(audio_file):
             audio_clip = AudioFileClip(audio_file)
-            clip_duration = audio_clip.duration + 0.8  # Pridedame 0.8 s pauzę
+            clip_duration = audio_clip.duration + 0.8 
         else:
             audio_clip = None
             clip_duration = 7.0
 
-        print(f"Klipo trukmė nustatyta pagal garsą: {clip_duration:.2f} sek.")
-
-        # Nuotraukos paieška
         image_url = None
         if 'media_content' in entry and len(entry.media_content) > 0:
             image_url = entry.media_content[0].get('url')
         if not image_url:
+            full_text = entry.get('description', '') + " " + str(entry.get('content', ''))
             img_match = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', full_text, re.IGNORECASE)
             if img_match: image_url = img_match.group(1)
 
@@ -139,7 +105,6 @@ def main():
             except:
                 has_image = False
 
-        # --- UI SLUOKSNIS ---
         ui_canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(ui_canvas)
         
@@ -150,7 +115,6 @@ def main():
                     opacity = min(245, int(245 * ((y - start_fade) / (height - start_fade))))
                     draw.line([(0, y), (width, y)], fill=(20, 20, 20, opacity))
 
-        # Logotipas
         if os.path.exists(LOGO_FILE):
             try:
                 logo = Image.open(LOGO_FILE).convert("RGBA")
@@ -164,7 +128,6 @@ def main():
             except:
                 pass
 
-        # Tekstų laužymas
         title_lines = wrap_text(title, font_title, max_text_width, draw)
         summary_lines = wrap_text(summary_text, font_summary, max_text_width, draw)
 
@@ -174,7 +137,6 @@ def main():
         
         start_y = (height // 2) - (total_title_h // 2) + 50
 
-        # Antraštė
         for line in title_lines:
             draw.text((center_x + 4, start_y + 4), line, font=font_title, fill=(0, 0, 0, 220), anchor="ma")
             draw.text((center_x, start_y), line, font=font_title, fill=(255, 255, 255, 255), anchor="ma")
@@ -182,13 +144,11 @@ def main():
             
         start_y += 30 
         
-        # AI Santrauka
         for line in summary_lines:
             draw.text((center_x + 3, start_y + 3), line, font=font_summary, fill=(0, 0, 0, 220), anchor="ma")
             draw.text((center_x, start_y), line, font=font_summary, fill=(210, 210, 210, 255), anchor="ma")
             start_y += summary_spacing
 
-        # Indikatorius (1/4)
         counter_text = f"{index + 1} / {MAX_ARTICLES}"
         draw.rounded_rectangle([center_x - 60, height - 120, center_x + 60, height - 60], radius=8, fill=(122, 34, 34, 255))
         draw.text((center_x, height - 105), counter_text, font=font_cta, fill=(255, 255, 255, 255), anchor="mt")
@@ -196,7 +156,6 @@ def main():
         ui_path = f"temp_ui_{index}.png"
         ui_canvas.save(ui_path)
 
-        # --- FONO ANIMACIJA ---
         bg_clip = None
         if has_image:
             try:
@@ -219,7 +178,7 @@ def main():
 
                 bg_clip = VideoClip(make_zoom_frame, duration=clip_duration)
             except Exception as e:
-                print(f"Klaida apdorojant nuotrauką: {e}")
+                pass
 
         if not bg_clip:
             fallback_bg = f"temp_bg_{index}.jpg"
@@ -228,23 +187,31 @@ def main():
 
         ui_clip = ImageClip(ui_path).set_start(0).set_duration(clip_duration).crossfadein(0.4)
         
-        # Sujungiam vaizdą su garsu
         final_clip = CompositeVideoClip([bg_clip, ui_clip], size=(width, height))
         if audio_clip:
             final_clip = final_clip.set_audio(audio_clip)
 
         video_clips.append(final_clip)
 
-    print("\nSujungiami visi klipai į galutinį video...")
     final_video = concatenate_videoclips(video_clips, method="compose")
+
+    if os.path.exists(BG_MUSIC_FILE):
+        bg_audio = AudioFileClip(BG_MUSIC_FILE)
+        bg_audio = afx.audio_loop(bg_audio, duration=final_video.duration)
+        bg_audio = afx.volumex(bg_audio, 0.1)
+        if final_video.audio:
+            final_audio = CompositeAudioClip([final_video.audio, bg_audio])
+            final_video = final_video.set_audio(final_audio)
+        else:
+            final_video = final_video.set_audio(bg_audio)
+
     final_video.write_videofile(VIDEO_FILE, fps=24, codec="libx264", audio_codec="aac")
 
-    # Apsivalymas
     for i in range(MAX_ARTICLES):
         for f in [f"temp_img_{i}.jpg", f"temp_ui_{i}.png", f"temp_bg_{i}.jpg", f"temp_audio_{i}.mp3"]:
             if os.path.exists(f): os.remove(f)
-
-    print(f"\nSĖKMĖ! Vaizdo įrašas su AI tekstu ir garsu išsaugotas: {VIDEO_FILE}")
+    if os.path.exists("temp_text.txt"):
+        os.remove("temp_text.txt")
 
 if __name__ == "__main__":
     main()
