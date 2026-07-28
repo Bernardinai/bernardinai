@@ -3,9 +3,8 @@ import re
 import sys
 import html
 import time
-import json
-import urllib.request
 import feedparser
+import urllib.request
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
 from moviepy.editor import VideoClip, ImageClip, CompositeVideoClip, concatenate_videoclips, AudioFileClip, CompositeAudioClip
@@ -23,35 +22,13 @@ FONT_TITLE_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 FONT_SUB_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
 def generate_audio(text, output_filename):
-    api_key = os.environ.get("ELEVENLABS_API_KEY")
-    if not api_key:
-        print("!!! KLAIDA: Nerastas ELEVENLABS_API_KEY aplinkos kintamasis.")
-        return False
-        
-    url = "https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM"
-    headers = {
-        "Accept": "audio/mpeg",
-        "Content-Type": "application/json",
-        "xi-api-key": api_key
-    }
-    data = {
-        "text": text,
-        "model_id": "eleven_multilingual_v2",
-        "voice_settings": {
-            "stability": 0.5,
-            "similarity_boost": 0.75
-        }
-    }
     try:
-        req = urllib.request.Request(url, json.dumps(data).encode('utf-8'), headers)
-        with urllib.request.urlopen(req) as response, open(output_filename, 'wb') as f:
-            f.write(response.read())
-        return True
-    except Exception as e:
-        error_msg = str(e)
-        if hasattr(e, 'read'):
-            error_msg += " - " + e.read().decode('utf-8')
-        print(f"!!! KLAIDA GENERUOJANT BALSĄ: {error_msg}")
+        with open("temp_text.txt", "w", encoding="utf-8") as f:
+            f.write(text)
+        # Grąžintas patikimas Microsoft Ona balsas
+        os.system(f'edge-tts --voice lt-LT-OnaNeural -f temp_text.txt --write-media {output_filename}')
+        return os.path.exists(output_filename)
+    except:
         return False
 
 def wrap_text(text, font, max_width, draw):
@@ -93,6 +70,7 @@ def main():
     for index, entry in enumerate(articles_to_process):
         title = html.unescape(entry.title).replace('. ', '.\u00A0').replace('-', '- ')
         
+        # Paliekame trumpus, dinamiškus tekstus "Reels" formatui
         if index == 0:
             spoken_text = f"Šiandien Bernardinuose skaitykite: {title}."
             summary_text = "Šiandien Bernardinuose skaitykite:"
@@ -115,18 +93,16 @@ def main():
 
         image_url = None
         
-        # 1. Pirmas būdas: ieškome "media_content"
+        # Patobulinta nuotraukų paieška
         if 'media_content' in entry and len(entry.media_content) > 0:
             image_url = entry.media_content[0].get('url')
             
-        # 2. Antras būdas: ieškome "enclosure" (prisegtukai)
         if not image_url and 'links' in entry:
             for link in entry.links:
                 if link.get('rel') == 'enclosure' and 'image' in link.get('type', ''):
                     image_url = link.get('href')
                     break
                     
-        # 3. Trečias būdas: ieškome <img> žymių aprašyme arba pilname tekste
         if not image_url:
             full_text = entry.get('description', '')
             if 'content' in entry:
@@ -259,11 +235,14 @@ def main():
         else:
             final_video = final_video.set_audio(bg_audio)
 
+    # Greitas atvaizdavimas (render) paliktas
     final_video.write_videofile(VIDEO_FILE, fps=24, codec="libx264", audio_codec="aac", preset="ultrafast", threads=2)
 
     for i in range(MAX_ARTICLES):
         for f in [f"temp_img_{i}.jpg", f"temp_ui_{i}.png", f"temp_bg_{i}.jpg", f"temp_audio_{i}.mp3"]:
             if os.path.exists(f): os.remove(f)
+    if os.path.exists("temp_text.txt"):
+        os.remove("temp_text.txt")
 
 if __name__ == "__main__":
     main()
