@@ -2,39 +2,25 @@ name: Bernardinai Reels Bot
 
 on:
   schedule:
-    # Paleidžiama kasdien 14:30 UTC laiku (17:30 Lietuvos laiku)
     - cron: '30 14 * * *'
-  workflow_dispatch: # Paliekame šią eilutę, kad bet kada galėtumėte paleisti ir rankiniu būdu
-
-permissions:
-  contents: write
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Pasiimame repozitorijos failus
-        uses: actions/checkout@v3
-
-      - name: Paruošiame Python aplinką
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-
-      - name: Įdiegiame reikalingas bibliotekas
-        run: |
-          python -m pip install --upgrade pip
-          pip install feedparser Pillow numpy moviepy==1.0.3 edge-tts google-generativeai
-
-      - name: Paleidžiame Reels agentą
-        env:
-          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
-        run: python reels_agent.py
-
-      - name: Išsaugome sugeneruotą video atgal į GitHub
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add bernardinai_dienos_apzvalga.mp4
-          git commit -m "Atnaujintas Reels vaizdo įrašas" || echo "Nėra jokių naujų pakeitimų"
-          git push
+    - uses: actions/checkout@v3
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    - name: Install dependencies
+      run: |
+        sudo apt-get install -y fonts-dejavu
+        pip install feedparser Pillow moviepy edge-tts numpy google-api-python-client google-auth-httplib2 google-auth-oauthlib
+    - name: Run script
+      env:
+        YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+        YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+        YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+      run: python reels_agent.py
