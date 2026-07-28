@@ -1,9 +1,10 @@
-name: Dienos Apzvalga (Reels/Shorts)
+name: Bernardinai Reels Bot
 
 on:
   schedule:
-    - cron: '0 12 * * *'
-  workflow_dispatch:
+    # Paleidžiama kasdien 14:30 UTC laiku (17:30 Lietuvos laiku)
+    - cron: '30 14 * * *'
+  workflow_dispatch: # Paliekame šią eilutę, kad bet kada galėtumėte paleisti ir rankiniu būdu
 
 permissions:
   contents: write
