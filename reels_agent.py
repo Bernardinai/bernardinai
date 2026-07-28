@@ -69,17 +69,18 @@ def main():
     for index, entry in enumerate(articles_to_process):
         title = html.unescape(entry.title).replace('. ', '.\u00A0').replace('-', '- ')
         
-        # Paimamas visas meta aprašymas be trumpinimo
-        raw_desc = entry.get('description', '')
-        clean_desc = re.sub('<[^<]+>', '', raw_desc).strip()
-        
-        if not clean_desc.endswith(('.', '!', '?', '...')):
-             clean_desc += "."
-             
-        summary_text = f"{clean_desc} Išsamiau skaitykite portale Bernardinai.lt!"
+        # Sukuriame skirtingą įgarsinimą ir tekstą priklausomai nuo pozicijos
+        if index == 0:
+            spoken_text = f"Šiandien Bernardinuose skaitykite: {title}."
+            summary_text = "Šiandien Bernardinuose skaitykite:"
+        elif index == len(articles_to_process) - 1:
+            spoken_text = f"{title}. Tai ir dar daugiau rasite portale Bernardinai!"
+            summary_text = "Tai ir dar daugiau rasite portale Bernardinai.lt!"
+        else:
+            spoken_text = f"{title}."
+            summary_text = "Skaitykite portale Bernardinai.lt:"
 
         audio_file = f"temp_audio_{index}.mp3"
-        spoken_text = f"{title}. {summary_text}"
         has_audio = generate_audio(spoken_text, audio_file)
 
         if has_audio and os.path.exists(audio_file):
@@ -87,7 +88,7 @@ def main():
             clip_duration = audio_clip.duration + 0.8 
         else:
             audio_clip = None
-            clip_duration = 7.0
+            clip_duration = 5.0
 
         image_url = None
         if 'media_content' in entry and len(entry.media_content) > 0:
@@ -147,22 +148,24 @@ def main():
 
         title_spacing = 65 * 1.3
         summary_spacing = 42 * 1.4
+        total_summary_h = len(summary_lines) * summary_spacing
         total_title_h = len(title_lines) * title_spacing
         
-        start_y = (height // 2) - (total_title_h // 2) + 50
+        # Tekstas ekrane atvaizduojamas išdėstant apibendrinimą viršuje, o antraštę po juo
+        start_y = (height // 2) - ((total_title_h + total_summary_h) // 2) + 50
 
-        for line in title_lines:
-            draw.text((center_x + 4, start_y + 4), line, font=font_title, fill=(0, 0, 0, 220), anchor="ma")
-            draw.text((center_x, start_y), line, font=font_title, fill=(255, 255, 255, 255), anchor="ma")
-            start_y += title_spacing
-            
-        start_y += 30 
-        
         for line in summary_lines:
             draw.text((center_x + 3, start_y + 3), line, font=font_summary, fill=(0, 0, 0, 220), anchor="ma")
             draw.text((center_x, start_y), line, font=font_summary, fill=(210, 210, 210, 255), anchor="ma")
             start_y += summary_spacing
 
+        start_y += 30 
+        
+        for line in title_lines:
+            draw.text((center_x + 4, start_y + 4), line, font=font_title, fill=(0, 0, 0, 220), anchor="ma")
+            draw.text((center_x, start_y), line, font=font_title, fill=(255, 255, 255, 255), anchor="ma")
+            start_y += title_spacing
+            
         counter_text = f"{index + 1} / {MAX_ARTICLES}"
         draw.rounded_rectangle([center_x - 60, height - 120, center_x + 60, height - 60], radius=8, fill=(122, 34, 34, 255))
         draw.text((center_x, height - 105), counter_text, font=font_cta, fill=(255, 255, 255, 255), anchor="mt")
@@ -219,6 +222,7 @@ def main():
         else:
             final_video = final_video.set_audio(bg_audio)
 
+    # Pridėtas procesoriaus greičio optimizavimas
     final_video.write_videofile(VIDEO_FILE, fps=24, codec="libx264", audio_codec="aac", preset="ultrafast", threads=2)
 
     for i in range(MAX_ARTICLES):
