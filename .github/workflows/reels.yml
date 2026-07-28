@@ -27,7 +27,6 @@ jobs:
 
       - name: Paleidžiame Reels agentą
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
         run: python reels_agent.py
 
