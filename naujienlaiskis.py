@@ -723,7 +723,16 @@ wp_author_id = 8149  # Fiksuotas „Bernardinai.lt“ autoriaus ID
 if wp_user and wp_pass:
     print("Kuriamas informacinis įrašas Bernardinai.lt svetainėje...")
 
-    auth_str = f"{wp_user}:{wp_pass}"
+    # SVARBIAUSIA: Išvalome tarpus ir nematomus simbolius iš vartotojo ir slaptažodžio
+    wp_user_clean = wp_user.strip()
+    wp_pass_clean = wp_pass.replace(" ", "").strip()
+
+    print(
+        f"Prisijungiama prie WordPress su vartotoju: '{wp_user_clean}'"
+        f" (slaptažodžio ilgis: {len(wp_pass_clean)} sim.)"
+    )
+
+    auth_str = f"{wp_user_clean}:{wp_pass_clean}"
     encoded_auth = base64.b64encode(auth_str.encode("utf-8")).decode("utf-8")
     wp_headers = {
         "Authorization": f"Basic {encoded_auth}",
