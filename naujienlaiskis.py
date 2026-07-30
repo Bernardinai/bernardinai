@@ -1,49 +1,70 @@
-import sys
-import traceback
-import feedparser
-from weasyprint import HTML
+import base64
 import datetime
 from datetime import timedelta
+import feedparser
+import json
 import os
 import re
-import base64
-import json
-import urllib.request
+import sys
+import traceback
 import urllib.error
+import urllib.request
+from weasyprint import HTML
 from zoneinfo import ZoneInfo
 
-event_name = os.environ.get('EVENT_NAME', '')
-force_real = os.environ.get('TIKRAS_LEIDINYS', 'false').lower() == 'true'
-is_real_run = (event_name == 'schedule') or force_real
+event_name = os.environ.get("EVENT_NAME", "")
+force_real = os.environ.get("TIKRAS_LEIDINYS", "false").lower() == "true"
+is_real_run = (event_name == "schedule") or force_real
 
-if event_name == 'schedule':
+if event_name == "schedule":
     lt_time = datetime.datetime.now(ZoneInfo("Europe/Vilnius"))
     if not (6 <= lt_time.hour <= 10):
-        print(f"Dabar Lietuvoje yra {lt_time.hour} val. Agentas ilsisi, nes siuntimo laikas yra tarp 06:00 ir 10:00 val.")
+        print(
+            f"Dabar Lietuvoje yra {lt_time.hour} val. Agentas ilsisi, nes siuntimo"
+            " laikas yra tarp 06:00 ir 10:00 val."
+        )
         sys.exit(0)
 
 today = datetime.datetime.now()
 today_str = today.strftime("%Y-%m-%d")
 one_week_ago = today - timedelta(days=7)
-menesiai = ["sausio", "vasario", "kovo", "balandžio", "gegužės", "birželio", 
-            "liepos", "rugpjūčio", "rugsėjo", "spalio", "lapkričio", "gruodžio"]
+menesiai = [
+    "sausio",
+    "vasario",
+    "kovo",
+    "balandžio",
+    "gegužės",
+    "birželio",
+    "liepos",
+    "rugpjūčio",
+    "rugsėjo",
+    "spalio",
+    "lapkričio",
+    "gruodžio",
+]
 
-leidinio_data = f"{today.year} m. {menesiai[today.month - 1]} {today.day} d."
-savaites_laikotarpis = f"{one_week_ago.year} m. {menesiai[one_week_ago.month - 1]} {one_week_ago.day} d. – {today.year} m. {menesiai[today.month - 1]} {today.day} d."
+leidinio_data = (
+    f"{today.year} m. {menesiai[today.month - 1]} {today.day} d."
+)
+savaites_laikotarpis = (
+    f"{one_week_ago.year} m. {menesiai[one_week_ago.month - 1]}"
+    f" {one_week_ago.day} d. – {today.year} m. {menesiai[today.month - 1]}"
+    f" {today.day} d."
+)
 
-tracker_file = 'leidinio_numeris.txt'
+tracker_file = "leidinio_numeris.txt"
 current_year = today.year
 numeris = 1
 
 if is_real_run:
     if os.path.exists(tracker_file):
         try:
-            with open(tracker_file, 'r', encoding='utf-8') as f:
-                data = f.read().strip().split('/')
+            with open(tracker_file, "r", encoding="utf-8") as f:
+                data = f.read().strip().split("/")
                 saved_year = int(data[0])
                 saved_num = int(data[1])
                 last_run_date = data[2] if len(data) == 3 else ""
-                
+
                 if saved_year == current_year:
                     if last_run_date == today_str:
                         numeris = saved_num
@@ -57,108 +78,234 @@ if is_real_run:
 else:
     leidinio_numeris = "Bandomasis"
 
+# --- NAUJA: Funkcijos ankstesnio numerio gavėjų skaičiui ir linksniui gauti ---
+api_key = os.environ.get("MAILERLITE_API_KEY")
+
+
+def gauti_linksni(skaicius):
+    paskutiniai_du = skaicius % 100
+    paskutinis = skaicius % 10
+    if 11 <= paskutiniai_du <= 19 or paskutinis == 0:
+        return "prenumeratorių"
+    elif paskutinis == 1:
+        return "prenumeratoriui"
+    else:
+        return "prenumeratoriams"
+
+
+def gauti_paskutines_kampanijos_gavejus(api_key):
+    if not api_key:
+        return None
+    try:
+        url = "https://api.mailerlite.com/api/v2/campaigns/sent"
+        req = urllib.request.Request(
+            url,
+            headers={
+                "X-MailerLite-ApiKey": api_key,
+                "Content-Type": "application/json",
+                "User-Agent": "Mozilla/5.0",
+            },
+        )
+        with urllib.request.urlopen(req) as response:
+            kampanijos = json.loads(response.read().decode("utf-8"))
+            if kampanijos and len(kampanijos) > 0:
+                paskutine = kampanijos[0]
+                return paskutine.get(
+                    "total_recipients", paskutine.get("recipients_count", 0)
+                )
+    except Exception as e:
+        print(f"Nepavyko gauti praėjusio numerio gavėjų skaičiaus: {e}")
+    return None
+
+
+# Suformuojame ankstesnio numerio eilutę
+ankstesnio_nr_tekstas = ""
+if is_real_run and numeris > 1:
+    ankstesnis_nr_str = f"{current_year}/{numeris - 1}"
+    gaveju_sk = gauti_paskutines_kampanijos_gavejus(api_key)
+    if gaveju_sk and gaveju_sk > 0:
+        linksnis = gauti_linksni(gaveju_sk)
+        ankstesnio_nr_tekstas = (
+            f"Ankstesnis savaitraščio numeris (Nr. {ankstesnis_nr_str}) buvo"
+            f" išsiųstas {gaveju_sk} {linksnis}."
+        )
+    else:
+        ankstesnio_nr_tekstas = (
+            f"Ankstesnis savaitraščio numeris (Nr. {ankstesnis_nr_str}) jau"
+            " pasiekė mūsų skaitytojus."
+        )
+elif not is_real_run:
+    gaveju_sk = gauti_paskutines_kampanijos_gavejus(api_key)
+    if gaveju_sk and gaveju_sk > 0:
+        linksnis = gauti_linksni(gaveju_sk)
+        ankstesnio_nr_tekstas = (
+            "Ankstesnis savaitraščio numeris buvo išsiųstas"
+            f" {gaveju_sk} {linksnis}."
+        )
+# -----------------------------------------------------------------------------
+
 logo_src = ""
-logo_failas = 'logo.png' 
+logo_failas = "logo.png"
 if os.path.exists(logo_failas):
     with open(logo_failas, "rb") as image_file:
-        encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+        encoded_string = base64.b64encode(image_file.read()).decode("utf-8")
         logo_src = f"data:image/png;base64,{encoded_string}"
 
 matyti_url = set()
 pagrindiniai_straipsniai = []
 kiti_straipsniai = []
 
+
 def apdoroti_straipsni(entry, is_main=True):
-    link = getattr(entry, 'link', '#')
-    if link in matyti_url: return None
-        
+    link = getattr(entry, "link", "#")
+    if link in matyti_url:
+        return None
+
     try:
         pub_date_obj = datetime.datetime(*entry.published_parsed[:6])
-        if pub_date_obj < one_week_ago: return None
-        data_lt = f"{pub_date_obj.year} m. {menesiai[pub_date_obj.month - 1]} {pub_date_obj.day} d."
+        if pub_date_obj < one_week_ago:
+            return None
+        data_lt = (
+            f"{pub_date_obj.year} m. {menesiai[pub_date_obj.month - 1]}"
+            f" {pub_date_obj.day} d."
+        )
     except:
         pub_date_obj = datetime.datetime.now()
         data_lt = "Data nežinoma"
 
     saltinis = "Bernardinai.lt"
     if not is_main:
-        if hasattr(entry, 'source') and hasattr(entry.source, 'title'):
+        if hasattr(entry, "source") and hasattr(entry.source, "title"):
             saltinis = entry.source.title
 
-    autorius = getattr(entry, 'author', 'Bernardinai.lt')
-    aprasymas = getattr(entry, 'description', '')
-    
-    izanga_clean = re.sub('<[^<]+>', '', aprasymas)
-    izanga_clean = izanga_clean[:250] + '...' if len(izanga_clean) > 250 else izanga_clean
-    
+    autorius = getattr(entry, "author", "Bernardinai.lt")
+    aprasymas = getattr(entry, "description", "")
+
+    izanga_clean = re.sub("<[^<]+>", "", aprasymas)
+    izanga_clean = (
+        izanga_clean[:250] + "..."
+        if len(izanga_clean) > 250
+        else izanga_clean
+    )
+
     tituline_nuotrauka = ""
     paveikslelis = re.search(r'<img[^>]+src="([^">]+)"', aprasymas)
     if paveikslelis:
         tituline_nuotrauka = paveikslelis.group(1)
 
-    pilnas_tekstas = entry.content[0].value if (hasattr(entry, 'content') and len(entry.content) > 0) else aprasymas
-    
+    pilnas_tekstas = (
+        entry.content[0].value
+        if (hasattr(entry, "content") and len(entry.content) > 0)
+        else aprasymas
+    )
+
     if is_main:
-        pilnas_tekstas = re.sub(r'<img[^>]*>', '', pilnas_tekstas)
-        pilnas_tekstas = re.sub(r'<figcaption[^>]*>.*?</figcaption>', '', pilnas_tekstas, flags=re.IGNORECASE | re.DOTALL)
-        pilnas_tekstas = re.sub(r'<p[^>]*class="[^"]*caption[^"]*"[^>]*>.*?</p>', '', pilnas_tekstas, flags=re.IGNORECASE | re.DOTALL)
-        pilnas_tekstas = re.sub(r'<div[^>]*class="[^"]*caption[^"]*"[^>]*>.*?</div>', '', pilnas_tekstas, flags=re.IGNORECASE | re.DOTALL)
+        pilnas_tekstas = re.sub(r"<img[^>]*>", "", pilnas_tekstas)
+        pilnas_tekstas = re.sub(
+            r"<figcaption[^>]*>.*?</figcaption>",
+            "",
+            pilnas_tekstas,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        pilnas_tekstas = re.sub(
+            r'<p[^>]*class="[^"]*caption[^"]*"[^>]*>.*?</p>',
+            "",
+            pilnas_tekstas,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        pilnas_tekstas = re.sub(
+            r'<div[^>]*class="[^"]*caption[^"]*"[^>]*>.*?</div>',
+            "",
+            pilnas_tekstas,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
     else:
-        saltinis_match = re.search(r'(?:<p>)?\s*(?:<strong>)?\s*Šaltinis\s*(?:</strong>)?\s*:\s*([^<]+)', pilnas_tekstas, re.IGNORECASE)
+        saltinis_match = re.search(
+            r"(?:<p>)?\s*(?:<strong>)?\s*Šaltinis\s*(?:</strong>)?\s*:\s*([^<]+)",
+            pilnas_tekstas,
+            re.IGNORECASE,
+        )
         if saltinis_match:
             saltinis = saltinis_match.group(1).strip()
-            pilnas_tekstas = pilnas_tekstas.replace(saltinis_match.group(0), '')
+            pilnas_tekstas = pilnas_tekstas.replace(
+                saltinis_match.group(0), ""
+            )
 
-    pilnas_tekstas = re.sub(r'<h([1-6])\b[^>]*>', r'<div class="heading-\1">', pilnas_tekstas, flags=re.IGNORECASE)
-    pilnas_tekstas = re.sub(r'</h[1-6]>', r'</div>', pilnas_tekstas, flags=re.IGNORECASE)
-    pilnas_tekstas = re.sub(r'(<p[^>]*>)\s*([A-ZĄČĘĖĮŠŲŪŽa-ząčęėįšųūž])', r'\1<span class="drop-cap">\2</span>', pilnas_tekstas, count=1)
+    pilnas_tekstas = re.sub(
+        r"<h([1-6])\b[^>]*>",
+        r'<div class="heading-\1">',
+        pilnas_tekstas,
+        flags=re.IGNORECASE,
+    )
+    pilnas_tekstas = re.sub(
+        r"</h[1-6]>", r"</div>", pilnas_tekstas, flags=re.IGNORECASE
+    )
+    pilnas_tekstas = re.sub(
+        r"(<p[^>]*>)\s*([A-ZĄČĘĖĮŠŲŪŽa-ząčęėįšųūž])",
+        r'\1<span class="drop-cap">\2</span>',
+        pilnas_tekstas,
+        count=1,
+    )
 
     matyti_url.add(link)
     return {
-        'title': entry.title.replace('\n', ' ').replace('\r', '').strip(),
-        'author': autorius,
-        'source': saltinis,
-        'date': data_lt,
-        'pub_date_obj': pub_date_obj,
-        'image': tituline_nuotrauka,
-        'excerpt': izanga_clean,
-        'content': pilnas_tekstas,
-        'link': link
+        "title": entry.title.replace("\n", " ").replace("\r", "").strip(),
+        "author": autorius,
+        "source": saltinis,
+        "date": data_lt,
+        "pub_date_obj": pub_date_obj,
+        "image": tituline_nuotrauka,
+        "excerpt": izanga_clean,
+        "content": pilnas_tekstas,
+        "link": link,
     }
+
 
 print("Nuskaitomas pagrindinis RSS srautas...")
 for puslapis in range(1, 10):
-    rss_url = f"https://www.bernardinai.lt/?feed=mailerlite-kultura&paged={puslapis}"
+    rss_url = (
+        f"https://www.bernardinai.lt/?feed=mailerlite-kultura&paged={puslapis}"
+    )
     feed = feedparser.parse(rss_url)
-    if not feed.entries: break
+    if not feed.entries:
+        break
     for entry in feed.entries:
         straipsnis = apdoroti_straipsni(entry, is_main=True)
-        if straipsnis: pagrindiniai_straipsniai.append(straipsnis)
+        if straipsnis:
+            pagrindiniai_straipsniai.append(straipsnis)
 
 print("Nuskaitomas papildomas Kultūros RSS srautas...")
 for puslapis in range(1, 10):
-    rss_url = f"https://www.bernardinai.lt/kategorija/kultura/feed/?paged={puslapis}"
+    rss_url = (
+        "https://www.bernardinai.lt/kategorija/kultura/feed/?paged="
+        f"{puslapis}"
+    )
     feed = feedparser.parse(rss_url)
-    if not feed.entries: break
+    if not feed.entries:
+        break
     for entry in feed.entries:
         straipsnis = apdoroti_straipsni(entry, is_main=False)
-        if straipsnis: kiti_straipsniai.append(straipsnis)
+        if straipsnis:
+            kiti_straipsniai.append(straipsnis)
 
-pagrindiniai_straipsniai.sort(key=lambda x: x['pub_date_obj'])
-kiti_straipsniai.sort(key=lambda x: x['pub_date_obj'])
+pagrindiniai_straipsniai.sort(key=lambda x: x["pub_date_obj"])
+kiti_straipsniai.sort(key=lambda x: x["pub_date_obj"])
 
-print(f"Iš viso atrinkta: {len(pagrindiniai_straipsniai)} pagrindinių ir {len(kiti_straipsniai)} papildomų straipsnių.")
+print(
+    f"Iš viso atrinkta: {len(pagrindiniai_straipsniai)} pagrindinių ir"
+    f" {len(kiti_straipsniai)} papildomų straipsnių."
+)
 
 cover_bg_image = ""
 for straipsnis in reversed(pagrindiniai_straipsniai):
-    if straipsnis.get('image'):
-        cover_bg_image = straipsnis['image']
+    if straipsnis.get("image"):
+        cover_bg_image = straipsnis["image"]
         break
 
 if not cover_bg_image:
     for straipsnis in reversed(kiti_straipsniai):
-        if straipsnis.get('image'):
-            cover_bg_image = straipsnis['image']
+        if straipsnis.get("image"):
+            cover_bg_image = straipsnis["image"]
             break
 
 html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
@@ -195,7 +342,7 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     .toc-item {{ border-bottom: 1px dotted #ccc; margin-bottom: 15px; padding-bottom: 5px; overflow: hidden; }}
     .toc-link {{ text-decoration: none; color: #222; display: block; }}
     .toc-section-title {{ font-size: 14pt; color: #7a2222; font-weight: bold; text-transform: uppercase; margin-top: 30px; margin-bottom: 15px; border-bottom: 2px solid #7a2222; padding-bottom: 5px; }}
-    .intro-box {{ background-color: #f9f9f9; padding: 30px; border-radius: 8px; border: 1px solid #eaeaea; margin: 50px auto; max-width: 500px; text-align: center; }}
+    .intro-box {{ background-color: #f9f9f9; padding: 30px; border-radius: 8px; border: 1px solid #eaeaea; margin: 35px auto 30px auto; max-width: 500px; text-align: center; }}
     .btn-support {{ display: inline-block; background-color: #d32f2f; color: #FFF; padding: 10px 20px; text-decoration: none; font-weight: bold; border-radius: 4px; margin-top: 15px; }}
     
     .article-columns {{ column-count: 2; column-gap: 30px; text-align: justify; }}
@@ -266,8 +413,10 @@ if kiti_straipsniai:
     for i, straipsnis in enumerate(kiti_straipsniai):
         html_kodas += f"""<li class="toc-item"><a href="#kitas_{i}" class="toc-link"><strong>{straipsnis['title']}</strong></a></li>"""
 
+# --- ČIA ĮTERPIAMAS SAKINYS APIE ANKSTESNĮ NUMERĮ (po turinio sąrašo, prieš paramos bloką) ---
 html_kodas += f"""
         </ul>
+        {f'<div style="background-color: #fcfcfc; border-left: 4px solid #7a2222; padding: 12px 18px; margin: 35px auto 10px auto; max-width: 464px; font-size: 10pt; color: #444; font-style: italic; text-align: center;">{ankstesnio_nr_tekstas}</div>' if ankstesnio_nr_tekstas else ''}
         <div class="intro-box">
             <h3 style="margin-top: 0; color: #222; font-size: 16pt;">Palaikykite mūsų veiklą</h3>
             <p style="color: #555;">Bernardinai.lt yra nepriklausomas leidinys, savo misiją tęsiantis išskirtinai skaitytojų paramos dėka. Kviečiame mus paremti.</p>
@@ -366,9 +515,9 @@ html_kodas += f"""
 </body></html>
 """
 
-metu_aplankas = f'archyvas/{current_year}'
+metu_aplankas = f"archyvas/{current_year}"
 os.makedirs(metu_aplankas, exist_ok=True)
-pdf_archyvas = f'{metu_aplankas}/kulturos_savaitrastis_{today_str}.pdf'
+pdf_archyvas = f"{metu_aplankas}/kulturos_savaitrastis_{today_str}.pdf"
 
 print(f"Generuojamas PDF failas {current_year} metų archyvui...")
 try:
@@ -381,27 +530,33 @@ except Exception as e:
 
 if is_real_run:
     try:
-        with open(tracker_file, 'w', encoding='utf-8') as f:
+        with open(tracker_file, "w", encoding="utf-8") as f:
             f.write(f"{current_year}/{numeris}/{today_str}")
-        print(">>> TIKRAS PALEIDIMAS: Leidinio numeris atnaujintas ir išsaugotas.")
+        print(
+            ">>> TIKRAS PALEIDIMAS: Leidinio numeris atnaujintas ir"
+            " išsaugotas."
+        )
     except Exception as e:
         print(f"Nepavyko išsaugoti numerio failo: {e}")
 else:
     if not os.path.exists(tracker_file):
         try:
-            with open(tracker_file, 'w', encoding='utf-8') as f:
+            with open(tracker_file, "w", encoding="utf-8") as f:
                 f.write(f"{current_year}/0/2000-01-01")
         except Exception:
             pass
-    print(">>> BANDOMASIS PALEIDIMAS: Naudotas 'Bandomasis' numeris, atmintis neatnaujinama.")
-
-api_key = os.environ.get('MAILERLITE_API_KEY')
+    print(
+        ">>> BANDOMASIS PALEIDIMAS: Naudotas 'Bandomasis' numeris, atmintis"
+        " neatnaujinama."
+    )
 
 if api_key:
     print("Kuriamas ir siunčiamas MailerLite laiškas...")
-    
-    pdf_url = f"https://www.bernardinai.lt/savaitrastis/{current_year}/kulturos_savaitrastis_{today_str}.pdf"
-    
+
+    pdf_url = (
+        f"https://www.bernardinai.lt/savaitrastis/{current_year}/kulturos_savaitrastis_{today_str}.pdf"
+    )
+
     email_html = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -422,7 +577,7 @@ if api_key:
         
         <h2 style="color: #7a2222; border-bottom: 2px solid #7a2222; padding-bottom: 10px; margin-top: 40px;">Savaitės svarbiausi</h2>
     """
-    
+
     for straipsnis in pagrindiniai_straipsniai:
         email_html += f"""
         <div style="margin-bottom: 40px; padding-bottom: 20px; border-bottom: 1px solid #eee;">
@@ -432,9 +587,9 @@ if api_key:
             <p style="color: #555; font-size: 15px; line-height: 1.5; margin: 0;">{straipsnis['excerpt']}</p>
         </div>
         """
-        
+
     if kiti_straipsniai:
-        email_html += f"""
+        email_html += """
         <h2 style="color: #7a2222; border-bottom: 2px solid #7a2222; padding-bottom: 10px; margin-top: 40px;">Kiti savaitės kultūros tekstai</h2>
         <p style="color: #666; font-size: 13px; font-style: italic; margin-bottom: 20px;">Čia rasite Bernardinai.lt redaktorių ir žurnalistų atrinktas naujienų agentūrų BNS ir ELTA kultūros naujienas ir redakcijos gautus kitų autorių tekstus ir pranešimus spaudai apie kultūros įvykius.</p>
         """
@@ -460,7 +615,7 @@ if api_key:
 </body>
 </html>
 """
-    
+
     payload_campaign = {
         "type": "regular",
         "groups": [103032162],
@@ -468,59 +623,93 @@ if api_key:
         "from": "naujienlaiskis@bernardinai.lt",
         "from_name": "Bernardinai.lt kultūros savaitraštis",
         "language": "lt",
-        "google_analytics": f"kulturos-savaitrastis-{today_str}"
+        "google_analytics": f"kulturos-savaitrastis-{today_str}",
     }
-    
-    req_campaign = urllib.request.Request('https://api.mailerlite.com/api/v2/campaigns', 
-                                 data=json.dumps(payload_campaign).encode('utf-8'),
-                                 headers={
-                                     'X-MailerLite-ApiKey': api_key,
-                                     'Content-Type': 'application/json',
-                                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
-                                 })
+
+    req_campaign = urllib.request.Request(
+        "https://api.mailerlite.com/api/v2/campaigns",
+        data=json.dumps(payload_campaign).encode("utf-8"),
+        headers={
+            "X-MailerLite-ApiKey": api_key,
+            "Content-Type": "application/json",
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                " (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"
+            ),
+        },
+    )
     try:
         with urllib.request.urlopen(req_campaign) as response:
-            campaign_data = json.loads(response.read().decode('utf-8'))
-            campaign_id = campaign_data.get('id')
+            campaign_data = json.loads(response.read().decode("utf-8"))
+            campaign_id = campaign_data.get("id")
             print(f">>> Kampanija sukurta. ID: {campaign_id}")
-            
+
             if campaign_id:
                 payload_content = {
                     "html": email_html,
-                    "plain": f"Naujausias Kultūros savaitraštis jau paruoštas!\n\nAtsisiųsti PDF galite čia: {pdf_url}\n\nISSN: 3120-9696\n\nPeržiūrėti naršyklėje: {{$url}}\nAtsisakyti naujienlaiškio: {{$unsubscribe}}"
+                    "plain": (
+                        "Naujausias Kultūros savaitraštis jau"
+                        " paruoštas!\n\nAtsisiųsti PDF galite čia:"
+                        f" {pdf_url}\n\nISSN: 3120-9696\n\nPeržiūrėti"
+                        " naršyklėje: {$url}\nAtsisakyti naujienlaiškio:"
+                        " {$unsubscribe}"
+                    ),
                 }
-                
-                req_content = urllib.request.Request(f'https://api.mailerlite.com/api/v2/campaigns/{campaign_id}/content', 
-                                     data=json.dumps(payload_content).encode('utf-8'),
-                                     headers={
-                                         'X-MailerLite-ApiKey': api_key,
-                                         'Content-Type': 'application/json',
-                                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
-                                     },
-                                     method='PUT')
-                
+
+                req_content = urllib.request.Request(
+                    f"https://api.mailerlite.com/api/v2/campaigns/{campaign_id}/content",
+                    data=json.dumps(payload_content).encode("utf-8"),
+                    headers={
+                        "X-MailerLite-ApiKey": api_key,
+                        "Content-Type": "application/json",
+                        "User-Agent": (
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+                            " AppleWebKit/537.36 (KHTML, like Gecko)"
+                            " Chrome/110.0.0.0 Safari/537.36"
+                        ),
+                    },
+                    method="PUT",
+                )
+
                 with urllib.request.urlopen(req_content) as resp_content:
                     print(">>> MailerLite laiško turinys įkeltas!")
-                    
+
                 if is_real_run:
-                    req_send = urllib.request.Request(f'https://api.mailerlite.com/api/v2/campaigns/{campaign_id}/actions/send', 
-                                         data=json.dumps({}).encode('utf-8'),
-                                         headers={
-                                             'X-MailerLite-ApiKey': api_key,
-                                             'Content-Type': 'application/json',
-                                             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
-                                         },
-                                         method='POST')
-                    
+                    req_send = urllib.request.Request(
+                        f"https://api.mailerlite.com/api/v2/campaigns/{campaign_id}/actions/send",
+                        data=json.dumps({}).encode("utf-8"),
+                        headers={
+                            "X-MailerLite-ApiKey": api_key,
+                            "Content-Type": "application/json",
+                            "User-Agent": (
+                                "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+                                " AppleWebKit/537.36 (KHTML, like Gecko)"
+                                " Chrome/110.0.0.0 Safari/537.36"
+                            ),
+                        },
+                        method="POST",
+                    )
+
                     with urllib.request.urlopen(req_send) as resp_send:
-                        print(">>> TIKRAS PALEIDIMAS: MailerLite kampanija sėkmingai perkelta į OUTBOX (pradėta siųsti)!")
+                        print(
+                            ">>> TIKRAS PALEIDIMAS: MailerLite kampanija"
+                            " sėkmingai perkelta į OUTBOX (pradėta siųsti)!"
+                        )
                 else:
-                    print(">>> BANDOMASIS PALEIDIMAS: Laiškas paliktas kaip Juodraštis (Draft).")
-                    
+                    print(
+                        ">>> BANDOMASIS PALEIDIMAS: Laiškas paliktas kaip"
+                        " Juodraštis (Draft)."
+                    )
+
     except urllib.error.HTTPError as e:
-        error_msg = e.read().decode('utf-8')
-        print(f">>> KLAIDA kuriant MailerLite juodraštį. Kodas: {e.code}, Priežastis: {error_msg}")
+        error_msg = e.read().decode("utf-8")
+        print(
+            f">>> KLAIDA kuriant MailerLite juodraštį. Kodas: {e.code},"
+            f" Priežastis: {error_msg}"
+        )
     except Exception as e:
         print(f">>> KLAIDA: {e}")
 else:
-    print(">>> MAILERLITE_API_KEY nerastas aplinkoje. Juodraštis nekuriamas.")
+    print(
+        ">>> MAILERLITE_API_KEY nerastas aplinkoje. Juodraštis nekuriamas."
+    )
