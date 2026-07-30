@@ -334,7 +334,7 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     .issn-box {{ position: absolute; bottom: 15mm; right: 15mm; background-color: rgba(0,0,0,0.5); padding: 10px 20px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); z-index: 10; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }}
     .issn-text {{ font-size: 11pt; letter-spacing: 1px; font-weight: bold; }}
     
-    .toc-page {{ page-break-before: always; padding-top: 10mm; }}
+    .toc-page {{ page-break-before: always; page-break-after: always; padding-top: 10mm; }}
     .toc-title {{ text-align: center; font-size: 24pt; color: #7a2222; text-transform: uppercase; margin-bottom: 30px; margin-top: 20px; }}
     .toc-list {{ list-style: none; padding: 0; margin: 0; }}
     .toc-item {{ border-bottom: 1px dotted #ccc; margin-bottom: 15px; padding-bottom: 5px; overflow: hidden; }}
@@ -347,9 +347,30 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     .drop-cap {{ font-size: 350%; float: left; margin: 4px 8px 0 0; color: #7a2222; line-height: 0.8; font-weight: bold; }}
     .article-columns p {{ margin-top: 0; margin-bottom: 15px; widows: 2; orphans: 2; }}
     
-    .article-page {{ page-break-before: always; padding-top: 10mm; }}
-    .article-header {{ text-align: center; margin-bottom: 20px; }}
-    .article-title {{ font-size: 26pt; font-weight: bold; margin-bottom: 10px; line-height: 1.2; }}
+    .article-page {{
+        margin-top: 40px;
+        padding-top: 30px;
+        border-top: 1px solid #cccccc; /* Plona elegantiška skiriamoji linija tarp straipsnių */
+    }}
+    .article-page:first-of-type {{
+        margin-top: 0;
+        padding-top: 0;
+        border-top: none; /* Pirmam straipsniui po turinio linijos nereikia */
+    }}
+    .article-header {{
+        text-align: center;
+        margin-bottom: 20px;
+        break-after: avoid; /* Neleidžia antraštei likti vienai puslapio apačioje */
+        page-break-after: avoid;
+    }}
+    .article-title {{
+        font-size: 26pt;
+        font-weight: bold;
+        margin-bottom: 10px;
+        line-height: 1.2;
+        break-after: avoid;
+        page-break-after: avoid;
+    }}
     .article-meta {{ font-size: 10pt; color: #666; text-transform: uppercase; border-bottom: 2px solid #eee; padding-bottom: 10px; }}
     .article-image {{ width: 100%; max-height: 400px; object-fit: cover; margin-bottom: 25px; border-radius: 4px; }}
     
