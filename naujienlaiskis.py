@@ -712,12 +712,13 @@ else:
         ">>> MAILERLITE_API_KEY nerastas aplinkoje. Juodraštis nekuriamas."
     )
 
-# --- NAUJA: Sukuriame įrašą su ACF laukais ir nuotrauka Bernardinai.lt ---
+# --- NAUJA: Sukuriame įrašą su Bernardinai.lt autoriumi ir nuotrauka ---
 wp_user = os.environ.get("WP_USERNAME")
 wp_pass = os.environ.get("WP_APP_PASSWORD")
 wp_category = int(
     os.environ.get("WP_CATEGORY_ID", 65160)
 )  # Fiksuota kategorija 65160
+wp_author_id = 8149  # Fiksuotas „Bernardinai.lt“ autoriaus ID
 
 if wp_user and wp_pass:
     print("Kuriamas informacinis įrašas Bernardinai.lt svetainėje...")
@@ -733,9 +734,19 @@ if wp_user and wp_pass:
     featured_media_id = None
     if cover_bg_image and cover_bg_image.startswith("http"):
         try:
-            print(f"Atsisiunčiama viršelio nuotrauka iš: {cover_bg_image}")
+            # Išvalome weserv.nl proxy adresą, kad imtume originalią nuotrauką tiesiai
+            svara_img_url = cover_bg_image
+            if "images.weserv.nl" in cover_bg_image and "url=" in cover_bg_image:
+                match_url = re.search(r"url=([^&]+)", cover_bg_image)
+                if match_url:
+                    svara_img_url = urllib.parse.unquote(match_url.group(1))
+                    if not svara_img_url.startswith("http"):
+                        svara_img_url = "https://" + svara_img_url
+                    svara_img_url = svara_img_url.replace("&#038;", "&")
+
+            print(f"Atsisiunčiama viršelio nuotrauka iš: {svara_img_url}")
             img_req = urllib.request.Request(
-                cover_bg_image, headers={"User-Agent": "Mozilla/5.0"}
+                svara_img_url, headers={"User-Agent": "Mozilla/5.0"}
             )
             with urllib.request.urlopen(img_req) as resp:
                 image_data = resp.read()
@@ -794,10 +805,16 @@ if wp_user and wp_pass:
         "title": irasas_pavadinimas,
         "content": wp_html_turinys,
         "excerpt": trumpa_istrauka,
+        "author": wp_author_id,  # Priskiriame Bernardinai.lt (8149) standartiniam laukui
         "status": "publish" if is_real_run else "draft",
-        "categories": [wp_category],  # Fiksuotai priskiriam 65160
-        # Užpildome privalomąjį ACF "Trumpa ištrauka *" lauką:
-        "acf": {"short_description": trumpa_istrauka},
+        "categories": [wp_category],  # Fiksuotai priskiriame 65160
+        # Užpildome privalomus ACF laukus (ryšio laukui pateikiame sąrašą su ID 8149):
+        "acf": {
+            "short_description": trumpa_istrauka,
+            "author": [
+                wp_author_id
+            ],  # Priskiriame Bernardinai.lt ACF ryšio laukui
+        },
     }
 
     if featured_media_id:
