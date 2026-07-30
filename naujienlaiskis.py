@@ -723,19 +723,21 @@ wp_author_id = 8149  # Fiksuotas „Bernardinai.lt“ autoriaus ID
 if wp_user and wp_pass:
     print("Kuriamas informacinis įrašas Bernardinai.lt svetainėje...")
 
-    # SVARBIAUSIA: Išvalome tarpus ir nematomus simbolius iš vartotojo ir slaptažodžio
+    # Išvalome tarpus, naujas eilutes ar netyčines kabutes iš prisijungimo duomenų
     wp_user_clean = wp_user.strip()
     wp_pass_clean = wp_pass.replace(" ", "").strip()
 
-    print(
-        f"Prisijungiama prie WordPress su vartotoju: '{wp_user_clean}'"
-        f" (slaptažodžio ilgis: {len(wp_pass_clean)} sim.)"
-    )
+    print(f"Prisijungiama prie WordPress su vartotoju: '{wp_user_clean}'")
 
     auth_str = f"{wp_user_clean}:{wp_pass_clean}"
     encoded_auth = base64.b64encode(auth_str.encode("utf-8")).decode("utf-8")
+    basic_val = f"Basic {encoded_auth}"
+
+    # Siunčiame visas 3 antraščių variacijas, kad pralenktume FastCGI / Apache blokavimą
     wp_headers = {
-        "Authorization": f"Basic {encoded_auth}",
+        "Authorization": basic_val,
+        "X-HTTP-Authorization": basic_val,
+        "REDIRECT_HTTP_AUTHORIZATION": basic_val,
         "User-Agent": "Mozilla/5.0",
     }
 
@@ -743,7 +745,6 @@ if wp_user and wp_pass:
     featured_media_id = None
     if cover_bg_image and cover_bg_image.startswith("http"):
         try:
-            # Išvalome weserv.nl proxy adresą, kad imtume originalią nuotrauką tiesiai
             svara_img_url = cover_bg_image
             if "images.weserv.nl" in cover_bg_image and "url=" in cover_bg_image:
                 match_url = re.search(r"url=([^&]+)", cover_bg_image)
@@ -814,15 +815,12 @@ if wp_user and wp_pass:
         "title": irasas_pavadinimas,
         "content": wp_html_turinys,
         "excerpt": trumpa_istrauka,
-        "author": wp_author_id,  # Priskiriame Bernardinai.lt (8149) standartiniam laukui
+        "author": wp_author_id,  # Priskiriame Bernardinai.lt (8149)
         "status": "publish" if is_real_run else "draft",
-        "categories": [wp_category],  # Fiksuotai priskiriame 65160
-        # Užpildome privalomus ACF laukus (ryšio laukui pateikiame sąrašą su ID 8149):
+        "categories": [wp_category],  # Fiksuotai 65160
         "acf": {
             "short_description": trumpa_istrauka,
-            "author": [
-                wp_author_id
-            ],  # Priskiriame Bernardinai.lt ACF ryšio laukui
+            "author": [wp_author_id],  # Bernardinai.lt ACF ryšio laukui
         },
     }
 
