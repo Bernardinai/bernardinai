@@ -20,8 +20,8 @@ if event_name == "schedule":
     lt_time = datetime.datetime.now(ZoneInfo("Europe/Vilnius"))
     if not (6 <= lt_time.hour <= 10):
         print(
-            f"Dabar Lietuvoje yra {lt_time.hour} val. Agentas ilsisi, nes siuntimo"
-            " laikas yra tarp 06:00 ir 10:00 val."
+            f"Dabar Lietuvoje yra {lt_time.hour} val. Agentas ilsisi, nes"
+            " siuntimo laikas yra tarp 06:00 ir 10:00 val."
         )
         sys.exit(0)
 
@@ -43,9 +43,7 @@ menesiai = [
     "gruodžio",
 ]
 
-leidinio_data = (
-    f"{today.year} m. {menesiai[today.month - 1]} {today.day} d."
-)
+leidinio_data = f"{today.year} m. {menesiai[today.month - 1]} {today.day} d."
 savaites_laikotarpis = (
     f"{one_week_ago.year} m. {menesiai[one_week_ago.month - 1]}"
     f" {one_week_ago.day} d. – {today.year} m. {menesiai[today.month - 1]}"
@@ -78,7 +76,7 @@ if is_real_run:
 else:
     leidinio_numeris = "Bandomasis"
 
-# --- NAUJA: Funkcijos ankstesnio numerio gavėjų skaičiui ir linksniui gauti ---
+# --- Funkcijos ankstesnio numerio gavėjų skaičiui ir linksniui gauti ---
 api_key = os.environ.get("MAILERLITE_API_KEY")
 
 
@@ -413,7 +411,7 @@ if kiti_straipsniai:
     for i, straipsnis in enumerate(kiti_straipsniai):
         html_kodas += f"""<li class="toc-item"><a href="#kitas_{i}" class="toc-link"><strong>{straipsnis['title']}</strong></a></li>"""
 
-# --- ČIA ĮTERPIAMAS SAKINYS APIE ANKSTESNĮ NUMERĮ (po turinio sąrašo, prieš paramos bloką) ---
+# --- SAKINYS APIE ANKSTESNĮ NUMERĮ (po turinio sąrašo, prieš paramos bloką) ---
 html_kodas += f"""
         </ul>
         {f'<div style="background-color: #fcfcfc; border-left: 4px solid #7a2222; padding: 12px 18px; margin: 35px auto 10px auto; max-width: 464px; font-size: 10pt; color: #444; font-style: italic; text-align: center;">{ankstesnio_nr_tekstas}</div>' if ankstesnio_nr_tekstas else ''}
@@ -712,4 +710,73 @@ if api_key:
 else:
     print(
         ">>> MAILERLITE_API_KEY nerastas aplinkoje. Juodraštis nekuriamas."
+    )
+
+# --- NAUJA: Sukuriame įrašą Bernardinai.lt svetainėje ---
+wp_user = os.environ.get("WP_USERNAME")
+wp_pass = os.environ.get("WP_APP_PASSWORD")
+wp_category = os.environ.get("WP_CATEGORY_ID")
+
+if wp_user and wp_pass:
+    print("Kuriamas informacinis įrašas Bernardinai.lt svetainėje...")
+
+    irasas_pavadinimas = (
+        f"Kultūros savaitraštis Nr. {leidinio_numeris} | {leidinio_data}"
+    )
+
+    wp_html_turinys = f"""
+    <p>Skaitytojams pateikiame naujausią interneto dienraščio „Bernardinai.lt“ Kultūros savaitraščio numerį ({leidinio_data}, Nr. {leidinio_numeris}).</p>
+    <p>Šiame leidinyje rasite redaktorių atrinktus svarbiausius savaitės kultūros tekstus, interviu, esė bei recenzijas, paruoštas patogiam skaitymui žurnalo formatu.</p>
+    <p style="margin: 30px 0; text-align: center;">
+        <a href="{pdf_url}" target="_blank" rel="noopener noreferrer" style="background-color: #d32f2f; color: #ffffff; padding: 14px 28px; text-decoration: none; font-weight: bold; border-radius: 5px; display: inline-block; font-size: 16px;">
+            Atsisiųsti PDF savaitraštį
+        </a>
+    </p>
+    <p><em>ISSN 3120-9696. Leidinys paruoštas ir platinamas nemokamai.</em></p>
+    """
+
+    payload_wp = {
+        "title": irasas_pavadinimas,
+        "content": wp_html_turinys,
+        # Jei tai tikras paleidimas, publikuojame, kitaip paliekame kaip juodraštį peržiūrai
+        "status": "publish" if is_real_run else "draft",
+    }
+
+    if wp_category:
+        try:
+            payload_wp["categories"] = [int(wp_category)]
+        except ValueError:
+            pass
+
+    auth_str = f"{wp_user}:{wp_pass}"
+    encoded_auth = base64.b64encode(auth_str.encode("utf-8")).decode("utf-8")
+
+    req_wp = urllib.request.Request(
+        "https://www.bernardinai.lt/wp-json/wp/v2/posts",
+        data=json.dumps(payload_wp).encode("utf-8"),
+        headers={
+            "Authorization": f"Basic {encoded_auth}",
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req_wp) as resp_wp:
+            wp_data = json.loads(resp_wp.read().decode("utf-8"))
+            post_link = wp_data.get("link", "Nuoroda nerasta")
+            print(f">>> Sėkmingai sukurtas įrašas svetainėje! URL: {post_link}")
+    except urllib.error.HTTPError as e:
+        err_msg = e.read().decode("utf-8")
+        print(
+            f">>> KLAIDA kuriant įrašą WordPress. Kodas: {e.code}, Priežastis:"
+            f" {err_msg}"
+        )
+    except Exception as e:
+        print(f">>> KLAIDA kuriant WordPress įrašą: {e}")
+else:
+    print(
+        ">>> WP_USERNAME arba WP_APP_PASSWORD nerasti aplinkoje. Įrašas"
+        " svetainėje nekuriamas."
     )
