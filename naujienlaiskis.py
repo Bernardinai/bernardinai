@@ -712,7 +712,7 @@ else:
         ">>> MAILERLITE_API_KEY nerastas aplinkoje. Juodraštis nekuriamas."
     )
 
-# --- NAUJA: Sukuriame įrašą Bernardinai.lt svetainėje ---
+# --- NAUJA: Sukuriame įrašą ir įkeliame titulinę nuotrauką į Bernardinai.lt ---
 wp_user = os.environ.get("WP_USERNAME")
 wp_pass = os.environ.get("WP_APP_PASSWORD")
 wp_category = os.environ.get("WP_CATEGORY_ID")
@@ -720,19 +720,72 @@ wp_category = os.environ.get("WP_CATEGORY_ID")
 if wp_user and wp_pass:
     print("Kuriamas informacinis įrašas Bernardinai.lt svetainėje...")
 
+    auth_str = f"{wp_user}:{wp_pass}"
+    encoded_auth = base64.b64encode(auth_str.encode("utf-8")).decode("utf-8")
+    wp_headers = {
+        "Authorization": f"Basic {encoded_auth}",
+        "User-Agent": "Mozilla/5.0",
+    }
+
+    # 1. BANDOME ĮKELTI TITULINĘ NUOTRAUKĄ Į WORDPRESS MEDIA BIBLIOTEKĄ
+    featured_media_id = None
+    if cover_bg_image and cover_bg_image.startswith("http"):
+        try:
+            print(f"Atsisiunčiama viršelio nuotrauka iš: {cover_bg_image}")
+            # Atsisiunčiame nuotraukos duomenis
+            img_req = urllib.request.Request(
+                cover_bg_image, headers={"User-Agent": "Mozilla/5.0"}
+            )
+            with urllib.request.urlopen(img_req) as resp:
+                image_data = resp.read()
+
+            # Paruošiame nuotraukos pavadinimą ir MIME tipą
+            failo_varda = f"kulturos_savaitrastis_cover_{today_str}.jpg"
+            media_headers = wp_headers.copy()
+            media_headers["Content-Type"] = "image/jpeg"
+            media_headers["Content-Disposition"] = (
+                f'attachment; filename="{failo_varda}"'
+            )
+
+            # Įkeliame į WordPress žiniasklaidos (Media) biblioteką
+            req_media = urllib.request.Request(
+                "https://www.bernardinai.lt/wp-json/wp/v2/media",
+                data=image_data,
+                headers=media_headers,
+                method="POST",
+            )
+            with urllib.request.urlopen(req_media) as resp_media:
+                media_json = json.loads(resp_media.read().decode("utf-8"))
+                featured_media_id = media_json.get("id")
+                print(
+                    f">>> Titulinė nuotrauka sėkmingai įkelta į WordPress! ID:"
+                    f" {featured_media_id}"
+                )
+        except Exception as e:
+            print(
+                ">>> NEPAVYKO įkelti titulinės nuotraukos (tęsiame be jos):"
+                f" {e}"
+            )
+
+    # 2. SUFORMUOJAME SEO APRAŠYMĄ IR STRAIPSNIO TURINĮ
+    meta_aprasymas = (
+        f"Bernardinai.lt kultūros savaitraštis Nr. {leidinio_numeris}."
+        f" {leidinio_data} paruoštas geriausių savaitės tekstų, recenzijų ir"
+        " interviu rinkinys."
+    )
     irasas_pavadinimas = (
         f"Kultūros savaitraštis Nr. {leidinio_numeris} | {leidinio_data}"
     )
 
     wp_html_turinys = f"""
-    <p>Skaitytojams pateikiame naujausią interneto dienraščio „Bernardinai.lt“ Kultūros savaitraščio numerį ({leidinio_data}, Nr. {leidinio_numeris}).</p>
-    <p>Šiame leidinyje rasite redaktorių atrinktus svarbiausius savaitės kultūros tekstus, interviu, esė bei recenzijas, paruoštas patogiam skaitymui žurnalo formatu.</p>
+    <p><strong>{meta_aprasymas}</strong></p>
+    <p>Skaitytojams pateikiame naujausią interneto dienraščio „Bernardinai.lt“ Kultūros savaitraščio numerį ({leidinio_data}, Nr. {leidinio_numeris}). Šiame leidinyje rasite redaktorių atrinktus svarbiausius savaitės kultūros tekstus, interviu, esė bei recenzijas, paruoštas patogiam skaitymui žurnalo formatu.</p>
     <p style="margin: 30px 0; text-align: center;">
         <a href="{pdf_url}" target="_blank" rel="noopener noreferrer" style="background-color: #d32f2f; color: #ffffff; padding: 14px 28px; text-decoration: none; font-weight: bold; border-radius: 5px; display: inline-block; font-size: 16px;">
             Atsisiųsti PDF savaitraštį
         </a>
     </p>
-    <p><em>ISSN 3120-9696. Leidinys paruoštas ir platinamas nemokamai.</em></p>
+    <p><em>Autorius: Bernardinai.lt | ISSN 3120-9696</em></p>
     """
 
     payload_wp = {
@@ -742,23 +795,24 @@ if wp_user and wp_pass:
         "status": "publish" if is_real_run else "draft",
     }
 
+    # Jei pavyko įkelti nuotrauką, priskiriame ją kaip Featured Image
+    if featured_media_id:
+        payload_wp["featured_media"] = featured_media_id
+
+    # Priskiriame kategorijai (rubrikai)
     if wp_category:
         try:
             payload_wp["categories"] = [int(wp_category)]
         except ValueError:
             pass
 
-    auth_str = f"{wp_user}:{wp_pass}"
-    encoded_auth = base64.b64encode(auth_str.encode("utf-8")).decode("utf-8")
+    post_headers = wp_headers.copy()
+    post_headers["Content-Type"] = "application/json"
 
     req_wp = urllib.request.Request(
         "https://www.bernardinai.lt/wp-json/wp/v2/posts",
         data=json.dumps(payload_wp).encode("utf-8"),
-        headers={
-            "Authorization": f"Basic {encoded_auth}",
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0",
-        },
+        headers=post_headers,
         method="POST",
     )
 
