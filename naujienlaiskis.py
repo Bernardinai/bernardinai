@@ -159,6 +159,18 @@ def apdoroti_straipsni(entry, is_main=True):
     if link in matyti_url:
         return None
 
+    # --- Neįtraukiame paties „Kultūros savaitraščio“ straipsnių ---
+    title_lower = getattr(entry, "title", "").lower()
+    if (
+        "kultūros savaitraštis" in title_lower
+        or "savaitraštis nr." in title_lower
+    ):
+        print(
+            f"Praleidžiamas savaitraščio įrašas: {getattr(entry, 'title', '')}"
+        )
+        return None
+    # ----------------------------------------------------------------
+
     try:
         pub_date_obj = datetime.datetime(*entry.published_parsed[:6])
         if pub_date_obj < one_week_ago:
@@ -350,39 +362,71 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     .article-page {{
         margin-top: 40px;
         padding-top: 30px;
-        border-top: 1px solid #cccccc; /* Plona elegantiška skiriamoji linija tarp straipsnių */
+        border-top: 1px solid #cccccc;
     }}
     .article-page:first-of-type {{
         margin-top: 0;
         padding-top: 0;
-        border-top: none; /* Pirmam straipsniui po turinio linijos nereikia */
+        border-top: none;
     }}
-    .article-header {{
-        text-align: center;
-        margin-bottom: 20px;
-        break-after: avoid; /* Neleidžia antraštei likti vienai puslapio apačioje */
-        page-break-after: avoid;
-    }}
-    .article-title {{
-        font-size: 26pt;
-        font-weight: bold;
-        margin-bottom: 10px;
-        line-height: 1.2;
+    .article-top-block {{
+        break-inside: avoid;
+        page-break-inside: avoid;
         break-after: avoid;
         page-break-after: avoid;
+        margin-bottom: 25px;
     }}
+    .article-header {{ text-align: center; margin-bottom: 20px; }}
+    .article-title {{ font-size: 26pt; font-weight: bold; margin-bottom: 10px; line-height: 1.2; }}
     .article-meta {{ font-size: 10pt; color: #666; text-transform: uppercase; border-bottom: 2px solid #eee; padding-bottom: 10px; }}
-    .article-image {{ width: 100%; max-height: 400px; object-fit: cover; margin-bottom: 25px; border-radius: 4px; }}
+    .article-image {{ width: 100%; max-height: 400px; object-fit: cover; margin-top: 15px; border-radius: 4px; }}
     
     .other-articles-section {{ page-break-before: always; padding-top: 10mm; }}
     .other-section-header {{ text-align: center; font-size: 24pt; font-weight: bold; color: #7a2222; text-transform: uppercase; margin-bottom: 10px; border-bottom: 2px solid #7a2222; padding-bottom: 10px; }}
     .other-section-subtitle {{ text-align: center; font-size: 10pt; color: #666; margin-bottom: 30px; font-style: italic; padding: 0 10%; line-height: 1.5; }}
     .other-article {{ margin-bottom: 40px; }}
-    .other-article-title {{ font-size: 16pt; font-weight: bold; margin-bottom: 8px; line-height: 1.2; break-after: avoid; page-break-after: avoid; color: #111; }}
-    .other-article-meta {{ font-size: 9pt; color: #666; text-transform: uppercase; border-bottom: 1px solid #eee; padding-bottom: 8px; margin-bottom: 15px; break-after: avoid; page-break-after: avoid; }}
+    .other-article-top-block {{
+        break-inside: avoid;
+        page-break-inside: avoid;
+        break-after: avoid;
+        page-break-after: avoid;
+        margin-bottom: 15px;
+    }}
+    .other-article-title {{ font-size: 16pt; font-weight: bold; margin-bottom: 8px; line-height: 1.2; color: #111; }}
+    .other-article-meta {{ font-size: 9pt; color: #666; text-transform: uppercase; border-bottom: 1px solid #eee; padding-bottom: 8px; }}
     .other-article img {{ width: 100% !important; height: auto !important; max-height: 300px; object-fit: cover; border-radius: 4px; margin-bottom: 5px; }}
     .other-article figure, .other-article .wp-caption {{ margin: 0 0 15px 0; width: 100% !important; break-inside: avoid; page-inside: avoid; }}
     .other-article figcaption, .other-article .wp-caption-text {{ font-size: 8pt; color: #777; font-style: italic; text-align: center; line-height: 1.3; margin-top: 5px; }}
+    
+    .ad-box {{
+        margin: 35px auto 20px auto;
+        padding: 16px 24px;
+        background-color: #fcfcfc;
+        border: 1px dashed #cccccc;
+        border-radius: 6px;
+        text-align: center;
+        max-width: 420px;
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }}
+    .ad-title {{
+        font-size: 10pt;
+        font-weight: bold;
+        color: #444444;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 5px;
+    }}
+    .ad-contact {{
+        font-size: 9.5pt;
+        color: #666666;
+    }}
+    .ad-contact a {{
+        color: #7a2222;
+        text-decoration: none;
+        font-weight: bold;
+    }}
+    
     .back-to-toc {{ text-align: right; margin-top: 15px; font-size: 9pt; }}
     .back-to-toc a {{ color: #7a2222; text-decoration: none; }}
     
@@ -432,7 +476,6 @@ if kiti_straipsniai:
     for i, straipsnis in enumerate(kiti_straipsniai):
         html_kodas += f"""<li class="toc-item"><a href="#kitas_{i}" class="toc-link"><strong>{straipsnis['title']}</strong></a></li>"""
 
-# --- SAKINYS APIE ANKSTESNĮ NUMERĮ (po turinio sąrašo, prieš paramos bloką) ---
 html_kodas += f"""
         </ul>
         {f'<div style="background-color: #fcfcfc; border-left: 4px solid #7a2222; padding: 12px 18px; margin: 35px auto 10px auto; max-width: 464px; font-size: 10pt; color: #444; font-style: italic; text-align: center;">{ankstesnio_nr_tekstas}</div>' if ankstesnio_nr_tekstas else ''}
@@ -447,13 +490,19 @@ html_kodas += f"""
 for i, straipsnis in enumerate(pagrindiniai_straipsniai):
     html_kodas += f"""
     <div class="article-page" id="pagrindinis_{i}">
-        <div class="article-header">
-            <div class="article-title">{straipsnis['title']}</div>
-            <div class="article-meta"><strong>{straipsnis['author']}</strong> &nbsp;|&nbsp; <strong>Bernardinai.lt</strong> &nbsp;|&nbsp; Publikuota: {straipsnis['date']}</div>
+        <div class="article-top-block">
+            <div class="article-header">
+                <div class="article-title">{straipsnis['title']}</div>
+                <div class="article-meta"><strong>{straipsnis['author']}</strong> &nbsp;|&nbsp; <strong>Bernardinai.lt</strong> &nbsp;|&nbsp; Publikuota: {straipsnis['date']}</div>
+            </div>
+            {f'<img src="{straipsnis["image"]}" class="article-image">' if straipsnis['image'] else ''}
         </div>
-        {f'<img src="{straipsnis["image"]}" class="article-image">' if straipsnis['image'] else ''}
         <div class="article-columns">
             {straipsnis['content']}
+        </div>
+        <div class="ad-box">
+            <div class="ad-title">Čia galėtų būti Jūsų reklama</div>
+            <div class="ad-contact">Kreipkitės: <a href="mailto:reklama@bernardinai.lt">reklama@bernardinai.lt</a></div>
         </div>
         <div class="back-to-toc"><a href="#turinys">↑ Grįžti į turinį</a></div>
     </div>
@@ -469,9 +518,15 @@ if kiti_straipsniai:
     for i, straipsnis in enumerate(kiti_straipsniai):
         html_kodas += f"""
             <div class="other-article" id="kitas_{i}">
-                <div class="other-article-title">{straipsnis['title']}</div>
-                <div class="other-article-meta">Publikuota: {straipsnis['date']}</div>
+                <div class="other-article-top-block">
+                    <div class="other-article-title">{straipsnis['title']}</div>
+                    <div class="other-article-meta">Publikuota: {straipsnis['date']}</div>
+                </div>
                 {straipsnis['content']}
+                <div class="ad-box" style="margin-top: 25px;">
+                    <div class="ad-title">Čia galėtų būti Jūsų reklama</div>
+                    <div class="ad-contact">Kreipkitės: <a href="mailto:reklama@bernardinai.lt">reklama@bernardinai.lt</a></div>
+                </div>
                 <div class="back-to-toc"><a href="#turinys">↑ Grįžti į turinį</a></div>
             </div>
         """
@@ -733,7 +788,7 @@ else:
         ">>> MAILERLITE_API_KEY nerastas aplinkoje. Juodraštis nekuriamas."
     )
 
-# --- NAUJA: Sukuriame įrašą su Bernardinai.lt ACF autoriumi ir nuotrauka ---
+# --- Sukuriame įrašą su Bernardinai.lt ACF autoriumi ir nuotrauka ---
 wp_user = os.environ.get("WP_USERNAME")
 wp_pass = os.environ.get("WP_APP_PASSWORD")
 wp_category = int(
@@ -818,22 +873,21 @@ if wp_user and wp_pass:
     )[:140]
 
     irasas_pavadinimas = (
-        f"Bernardinai.lt kultūros savaitraštis Nr. {leidinio_numeris} | {leidinio_data}"
+        f"Kultūros savaitraštis Nr. {leidinio_numeris} | {leidinio_data}"
     )
 
-    wp_html_turinys = f"""<p>Skaitytojams pateikiame naujausią interneto dienraščio „Bernardinai.lt“ Kultūros savaitraščio numerį ({leidinio_data}, Nr. {leidinio_numeris}). Šiame leidinyje rasite redaktorių atrinktus svarbiausius savaitės kultūros tekstus, interviu, esė bei recenzijas, paruoštas patogiam skaitymui žurnalo formatu.</p>
+    wp_html_turinys = f"""<p>Skaitytojams pateikiame interneto dienraščio „Bernardinai.lt“ Kultūros savaitraščio numerį ({leidinio_data}, Nr. {leidinio_numeris}). Šiame leidinyje rasite redaktorių atrinktus svarbiausius savaitės kultūros tekstus, interviu, esė bei recenzijas, paruoštas patogiam skaitymui žurnalo formatu.</p>
 <p style="margin: 30px 0; text-align: center;">
     <a href="{pdf_url}" target="_blank" rel="noopener noreferrer" style="background-color: #d32f2f; color: #ffffff; padding: 14px 28px; text-decoration: none; font-weight: bold; border-radius: 5px; display: inline-block; font-size: 16px;">
         Atsisiųsti PDF savaitraštį
     </a>
 </p>
-<p><em>VŠĮ „Bernardinai.lt“ | ISSN 3120-9696</em></p>"""
+<p><em>Autorius: Bernardinai.lt | ISSN 3120-9696</em></p>"""
 
     payload_wp = {
         "title": irasas_pavadinimas,
         "content": wp_html_turinys,
         "excerpt": trumpa_istrauka,
-        # Standartinio "author" lauko nebesiunčiame - WP jį priskirs automatiniam vartotojui
         "status": "publish" if is_real_run else "draft",
         "categories": [wp_category],  # Fiksuotai 65160
         "acf": {
