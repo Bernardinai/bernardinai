@@ -715,7 +715,8 @@ else:
 # --- NAUJA: Sukuriame įrašą ir įkeliame titulinę nuotrauką į Bernardinai.lt ---
 wp_user = os.environ.get("WP_USERNAME")
 wp_pass = os.environ.get("WP_APP_PASSWORD")
-wp_category = os.environ.get("WP_CATEGORY_ID")
+# Kintamuoju leistume pakeisti, bet numatytoji (fiksuota) reikšmė dabar visada bus 65160
+wp_category = int(os.environ.get("WP_CATEGORY_ID", 65160))
 
 if wp_user and wp_pass:
     print("Kuriamas informacinis įrašas Bernardinai.lt svetainėje...")
@@ -732,14 +733,12 @@ if wp_user and wp_pass:
     if cover_bg_image and cover_bg_image.startswith("http"):
         try:
             print(f"Atsisiunčiama viršelio nuotrauka iš: {cover_bg_image}")
-            # Atsisiunčiame nuotraukos duomenis
             img_req = urllib.request.Request(
                 cover_bg_image, headers={"User-Agent": "Mozilla/5.0"}
             )
             with urllib.request.urlopen(img_req) as resp:
                 image_data = resp.read()
 
-            # Paruošiame nuotraukos pavadinimą ir MIME tipą
             failo_varda = f"kulturos_savaitrastis_cover_{today_str}.jpg"
             media_headers = wp_headers.copy()
             media_headers["Content-Type"] = "image/jpeg"
@@ -747,7 +746,6 @@ if wp_user and wp_pass:
                 f'attachment; filename="{failo_varda}"'
             )
 
-            # Įkeliame į WordPress žiniasklaidos (Media) biblioteką
             req_media = urllib.request.Request(
                 "https://www.bernardinai.lt/wp-json/wp/v2/media",
                 data=image_data,
@@ -758,9 +756,14 @@ if wp_user and wp_pass:
                 media_json = json.loads(resp_media.read().decode("utf-8"))
                 featured_media_id = media_json.get("id")
                 print(
-                    f">>> Titulinė nuotrauka sėkmingai įkelta į WordPress! ID:"
+                    f">>> Titulinė nuotrauka sėkmingai įkelta! ID:"
                     f" {featured_media_id}"
                 )
+        except urllib.error.HTTPError as e:
+            print(
+                ">>> KLAIDA įkeliant nuotrauką į Media biblioteką (kodas"
+                f" {e.code}): {e.read().decode('utf-8')}"
+            )
         except Exception as e:
             print(
                 ">>> NEPAVYKO įkelti titulinės nuotraukos (tęsiame be jos):"
@@ -777,37 +780,27 @@ if wp_user and wp_pass:
         f"Kultūros savaitraštis Nr. {leidinio_numeris} | {leidinio_data}"
     )
 
-    wp_html_turinys = f"""
-    <p><strong>{meta_aprasymas}</strong></p>
-    <p>Skaitytojams pateikiame naujausią interneto dienraščio „Bernardinai.lt“ Kultūros savaitraščio numerį ({leidinio_data}, Nr. {leidinio_numeris}). Šiame leidinyje rasite redaktorių atrinktus svarbiausius savaitės kultūros tekstus, interviu, esė bei recenzijas, paruoštas patogiam skaitymui žurnalo formatu.</p>
-    <p style="margin: 30px 0; text-align: center;">
-        <a href="{pdf_url}" target="_blank" rel="noopener noreferrer" style="background-color: #d32f2f; color: #ffffff; padding: 14px 28px; text-decoration: none; font-weight: bold; border-radius: 5px; display: inline-block; font-size: 16px;">
-            Atsisiųsti PDF savaitraštį
-        </a>
-    </p>
-    <p><em>Autorius: Bernardinai.lt | ISSN 3120-9696</em></p>
-    """
+    wp_html_turinys = f"""<p><strong>{meta_aprasymas}</strong></p>
+<p>Skaitytojams pateikiame naujausią interneto dienraščio „Bernardinai.lt“ Kultūros savaitraščio numerį ({leidinio_data}, Nr. {leidinio_numeris}). Šiame leidinyje rasite redaktorių atrinktus svarbiausius savaitės kultūros tekstus, interviu, esė bei recenzijas, paruoštas patogiam skaitymui žurnalo formatu.</p>
+<p style="margin: 30px 0; text-align: center;">
+    <a href="{pdf_url}" target="_blank" rel="noopener noreferrer" style="background-color: #d32f2f; color: #ffffff; padding: 14px 28px; text-decoration: none; font-weight: bold; border-radius: 5px; display: inline-block; font-size: 16px;">
+        Atsisiųsti PDF savaitraštį
+    </a>
+</p>
+<p><em>Autorius: Bernardinai.lt | ISSN 3120-9696</em></p>"""
 
     payload_wp = {
         "title": irasas_pavadinimas,
         "content": wp_html_turinys,
-        # Jei tai tikras paleidimas, publikuojame, kitaip paliekame kaip juodraštį peržiūrai
         "status": "publish" if is_real_run else "draft",
+        "categories": [wp_category],  # Fiksuotai priskiriam 65160
     }
 
-    # Jei pavyko įkelti nuotrauką, priskiriame ją kaip Featured Image
     if featured_media_id:
-        payload_wp["featured_media"] = featured_media_id
-
-    # Priskiriame kategorijai (rubrikai)
-    if wp_category:
-        try:
-            payload_wp["categories"] = [int(wp_category)]
-        except ValueError:
-            pass
+        payload_wp["featured_media"] = int(featured_media_id)
 
     post_headers = wp_headers.copy()
-    post_headers["Content-Type"] = "application/json"
+    post_headers["Content-Type"] = "application/json; charset=utf-8"
 
     req_wp = urllib.request.Request(
         "https://www.bernardinai.lt/wp-json/wp/v2/posts",
@@ -824,8 +817,7 @@ if wp_user and wp_pass:
     except urllib.error.HTTPError as e:
         err_msg = e.read().decode("utf-8")
         print(
-            f">>> KLAIDA kuriant įrašą WordPress. Kodas: {e.code}, Priežastis:"
-            f" {err_msg}"
+            f">>> KLAIDA kuriant įrašą WordPress (kodas {e.code}):\n{err_msg}"
         )
     except Exception as e:
         print(f">>> KLAIDA kuriant WordPress įrašą: {e}")
