@@ -41,6 +41,9 @@ jobs:
           MAILERLITE_API_KEY: ${{ secrets.MAILERLITE_API_KEY }}
           EVENT_NAME: ${{ github.event_name }}
           TIKRAS_LEIDINYS: ${{ github.event.inputs.tikras_leidinys }}
+          WP_USERNAME: ${{ secrets.WP_USERNAME }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          WP_CATEGORY_ID: ${{ secrets.WP_CATEGORY_ID }}
         run: python naujienlaiskis.py
 
       - name: 6. Issaugomas archyvas repozitorijoje
