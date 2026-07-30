@@ -797,17 +797,16 @@ if wp_user and wp_pass:
     )[:140]
 
     irasas_pavadinimas = (
-        f"Kultūros savaitraštis Nr. {leidinio_numeris} | {leidinio_data}"
+        f"Bernardinai.lt kultūros savaitraštis Nr. {leidinio_numeris} | {leidinio_data}"
     )
 
-    wp_html_turinys = f"""<p><strong>{trumpa_istrauka}</strong></p>
-<p>Skaitytojams pateikiame naujausią interneto dienraščio „Bernardinai.lt“ Kultūros savaitraščio numerį ({leidinio_data}, Nr. {leidinio_numeris}). Šiame leidinyje rasite redaktorių atrinktus svarbiausius savaitės kultūros tekstus, interviu, esė bei recenzijas, paruoštas patogiam skaitymui žurnalo formatu.</p>
+    wp_html_turinys = f"""<p>Skaitytojams pateikiame naujausią interneto dienraščio „Bernardinai.lt“ Kultūros savaitraščio numerį ({leidinio_data}, Nr. {leidinio_numeris}). Šiame leidinyje rasite redaktorių atrinktus svarbiausius savaitės kultūros tekstus, interviu, esė bei recenzijas, paruoštas patogiam skaitymui žurnalo formatu.</p>
 <p style="margin: 30px 0; text-align: center;">
     <a href="{pdf_url}" target="_blank" rel="noopener noreferrer" style="background-color: #d32f2f; color: #ffffff; padding: 14px 28px; text-decoration: none; font-weight: bold; border-radius: 5px; display: inline-block; font-size: 16px;">
         Atsisiųsti PDF savaitraštį
     </a>
 </p>
-<p><em>Autorius: Bernardinai.lt | ISSN 3120-9696</em></p>"""
+<p><em>VŠĮ „Bernardinai.lt“ | ISSN 3120-9696</em></p>"""
 
     payload_wp = {
         "title": irasas_pavadinimas,
