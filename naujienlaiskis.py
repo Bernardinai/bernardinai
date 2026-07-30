@@ -712,18 +712,17 @@ else:
         ">>> MAILERLITE_API_KEY nerastas aplinkoje. Juodraštis nekuriamas."
     )
 
-# --- NAUJA: Sukuriame įrašą su Bernardinai.lt autoriumi ir nuotrauka ---
+# --- NAUJA: Sukuriame įrašą su Bernardinai.lt ACF autoriumi ir nuotrauka ---
 wp_user = os.environ.get("WP_USERNAME")
 wp_pass = os.environ.get("WP_APP_PASSWORD")
 wp_category = int(
     os.environ.get("WP_CATEGORY_ID", 65160)
 )  # Fiksuota kategorija 65160
-wp_author_id = 8149  # Fiksuotas „Bernardinai.lt“ autoriaus ID
+wp_acf_author_id = 8149  # Fiksuotas „Bernardinai.lt“ ACF autoriaus ID
 
 if wp_user and wp_pass:
     print("Kuriamas informacinis įrašas Bernardinai.lt svetainėje...")
 
-    # Išvalome tarpus, naujas eilutes ar netyčines kabutes iš prisijungimo duomenų
     wp_user_clean = wp_user.strip()
     wp_pass_clean = wp_pass.replace(" ", "").strip()
 
@@ -733,7 +732,6 @@ if wp_user and wp_pass:
     encoded_auth = base64.b64encode(auth_str.encode("utf-8")).decode("utf-8")
     basic_val = f"Basic {encoded_auth}"
 
-    # Siunčiame visas 3 antraščių variacijas, kad pralenktume FastCGI / Apache blokavimą
     wp_headers = {
         "Authorization": basic_val,
         "X-HTTP-Authorization": basic_val,
@@ -815,12 +813,14 @@ if wp_user and wp_pass:
         "title": irasas_pavadinimas,
         "content": wp_html_turinys,
         "excerpt": trumpa_istrauka,
-        "author": wp_author_id,  # Priskiriame Bernardinai.lt (8149)
+        # Standartinio "author" lauko nebesiunčiame - WP jį priskirs automatiniam vartotojui
         "status": "publish" if is_real_run else "draft",
         "categories": [wp_category],  # Fiksuotai 65160
         "acf": {
             "short_description": trumpa_istrauka,
-            "author": [wp_author_id],  # Bernardinai.lt ACF ryšio laukui
+            "author": [
+                wp_acf_author_id
+            ],  # Priskiriame 8149 jūsų ACF ryšio laukui
         },
     }
 
