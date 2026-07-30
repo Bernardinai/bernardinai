@@ -712,11 +712,12 @@ else:
         ">>> MAILERLITE_API_KEY nerastas aplinkoje. Juodraštis nekuriamas."
     )
 
-# --- NAUJA: Sukuriame įrašą ir įkeliame titulinę nuotrauką į Bernardinai.lt ---
+# --- NAUJA: Sukuriame įrašą su ACF laukais ir nuotrauka Bernardinai.lt ---
 wp_user = os.environ.get("WP_USERNAME")
 wp_pass = os.environ.get("WP_APP_PASSWORD")
-# Kintamuoju leistume pakeisti, bet numatytoji (fiksuota) reikšmė dabar visada bus 65160
-wp_category = int(os.environ.get("WP_CATEGORY_ID", 65160))
+wp_category = int(
+    os.environ.get("WP_CATEGORY_ID", 65160)
+)  # Fiksuota kategorija 65160
 
 if wp_user and wp_pass:
     print("Kuriamas informacinis įrašas Bernardinai.lt svetainėje...")
@@ -770,17 +771,17 @@ if wp_user and wp_pass:
                 f" {e}"
             )
 
-    # 2. SUFORMUOJAME SEO APRAŠYMĄ IR STRAIPSNIO TURINĮ
-    meta_aprasymas = (
+    # 2. SUFORMUOJAME TRUMPĄJĄ IŠTRAUKĄ (IKI 140 SP. Ž.) IR STRAIPSNIO TURINĮ
+    trumpa_istrauka = (
         f"Bernardinai.lt kultūros savaitraštis Nr. {leidinio_numeris}."
-        f" {leidinio_data} paruoštas geriausių savaitės tekstų, recenzijų ir"
-        " interviu rinkinys."
-    )
+        f" {leidinio_data} paruoštas geriausių savaitės tekstų PDF rinkinys."
+    )[:140]
+
     irasas_pavadinimas = (
         f"Kultūros savaitraštis Nr. {leidinio_numeris} | {leidinio_data}"
     )
 
-    wp_html_turinys = f"""<p><strong>{meta_aprasymas}</strong></p>
+    wp_html_turinys = f"""<p><strong>{trumpa_istrauka}</strong></p>
 <p>Skaitytojams pateikiame naujausią interneto dienraščio „Bernardinai.lt“ Kultūros savaitraščio numerį ({leidinio_data}, Nr. {leidinio_numeris}). Šiame leidinyje rasite redaktorių atrinktus svarbiausius savaitės kultūros tekstus, interviu, esė bei recenzijas, paruoštas patogiam skaitymui žurnalo formatu.</p>
 <p style="margin: 30px 0; text-align: center;">
     <a href="{pdf_url}" target="_blank" rel="noopener noreferrer" style="background-color: #d32f2f; color: #ffffff; padding: 14px 28px; text-decoration: none; font-weight: bold; border-radius: 5px; display: inline-block; font-size: 16px;">
@@ -792,8 +793,11 @@ if wp_user and wp_pass:
     payload_wp = {
         "title": irasas_pavadinimas,
         "content": wp_html_turinys,
+        "excerpt": trumpa_istrauka,
         "status": "publish" if is_real_run else "draft",
         "categories": [wp_category],  # Fiksuotai priskiriam 65160
+        # Užpildome privalomąjį ACF "Trumpa ištrauka *" lauką:
+        "acf": {"short_description": trumpa_istrauka},
     }
 
     if featured_media_id:
