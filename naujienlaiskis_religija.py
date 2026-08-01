@@ -836,22 +836,28 @@ if wp_user and wp_pass:
         "User-Agent": "Mozilla/5.0",
     }
 
-    # 1. BANDOME ĮKELTI TITULINĘ NUOTRAUKĄ Į WORDPRESS MEDIA BIBLIOTEKĄ
+# 1. BANDOME ĮKELTI TITULINĘ NUOTRAUKĄ Į WORDPRESS MEDIA BIBLIOTEKĄ
     featured_media_id = None
     if cover_bg_image and cover_bg_image.startswith("http"):
         try:
-            svara_img_url = cover_bg_image
-            if "images.weserv.nl" in cover_bg_image and "url=" in cover_bg_image:
-                match_url = re.search(r"url=([^&]+)", cover_bg_image)
-                if match_url:
-                    svara_img_url = urllib.parse.unquote(match_url.group(1))
-                    if not svara_img_url.startswith("http"):
-                        svara_img_url = "https://" + svara_img_url
-                    svara_img_url = svara_img_url.replace("&#038;", "&")
+            svara_img_url = isvalyti_img_url(cover_bg_image)
+
+            # Jei nuotrauka yra iš Bernardinai.lt, pašaliname galimus URL parametrus po '?'
+            if "bernardinai.lt/wp-content/uploads/" in svara_img_url:
+                svara_img_url = svara_img_url.split("?")[0]
 
             print(f"Atsisiunčiama viršelio nuotrauka iš: {svara_img_url}")
+            
+            # Naudojame pilną naršyklės User-Agent, kad Wordfence nelaikytų mūsų botu
             img_req = urllib.request.Request(
-                svara_img_url, headers={"User-Agent": "Mozilla/5.0"}
+                svara_img_url, 
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                        " (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+                    ),
+                    "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+                }
             )
             with urllib.request.urlopen(img_req) as resp:
                 image_data = resp.read()
@@ -877,10 +883,9 @@ if wp_user and wp_pass:
                     f" {featured_media_id}"
                 )
         except urllib.error.HTTPError as e:
-            print(
-                ">>> KLAIDA įkeliant nuotrauką į Media biblioteką (kodas"
-                f" {e.code}): {e.read().decode('utf-8')}"
-            )
+            err_body = e.read().decode('utf-8')
+            # Jei grąžina Wordfence HTML klaidą, parodome trumpesnį pranešimą
+            print(f">>> KLAIDA įkeliant nuotrauką į Media biblioteką (kodas {e.code})")
         except Exception as e:
             print(
                 ">>> NEPAVYKO įkelti titulinės nuotraukos (tęsiame be jos):"
