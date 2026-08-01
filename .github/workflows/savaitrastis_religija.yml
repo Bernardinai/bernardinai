@@ -5,6 +5,12 @@ on:
     # Sekmadieniais 04:40 UTC laiku (~07:40 Lietuvos laiku)
     - cron: '40 4 * * 0'
   workflow_dispatch:
+    inputs:
+      tikras_leidinys:
+        description: 'Tikras leidinys (pažymėjus: siųsti MailerLite ir publikuoti WordPress viešai)'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   build:
@@ -30,7 +36,7 @@ jobs:
         WP_USERNAME: ${{ secrets.WP_USERNAME }}
         WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
         WP_CATEGORY_ID_RELIGIJA: ${{ secrets.WP_CATEGORY_ID_RELIGIJA }}
-        TIKRAS_LEIDINYS: "false"  # Testams paliekame "false", tikram paleidimui pakeisite į "true"
+        TIKRAS_LEIDINYS: ${{ github.event.inputs.tikras_leidinys || 'false' }}
       run: python naujienlaiskis_religija.py
 
     - name: Išsaugoti atnaujintą numeracijos failą
