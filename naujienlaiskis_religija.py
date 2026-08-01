@@ -76,6 +76,7 @@ if is_real_run:
 else:
     leidinio_numeris = "Bandomasis"
 
+# --- Funkcijos ankstesnio numerio gavėjų skaičiui ir linksniui gauti ---
 api_key = os.environ.get("MAILERLITE_API_KEY")
 
 
@@ -115,6 +116,7 @@ def gauti_paskutines_kampanijos_gavejus(api_key):
     return None
 
 
+# Suformuojame ankstesnio numerio eilutę
 ankstesnio_nr_tekstas = ""
 if is_real_run and numeris > 1:
     ankstesnis_nr_str = f"{current_year}/{numeris - 1}"
@@ -138,6 +140,7 @@ elif not is_real_run:
             "Ankstesnis savaitraščio numeris buvo išsiųstas"
             f" {gaveju_sk} {linksnis}."
         )
+# -----------------------------------------------------------------------------
 
 logo_src = ""
 logo_failas = "logo.png"
@@ -156,6 +159,7 @@ def apdoroti_straipsni(entry, is_main=True):
     if link in matyti_url:
         return None
 
+    # --- Neįtraukiame paties „Religijos savaitraščio“ straipsnių ---
     title_lower = getattr(entry, "title", "").lower()
     if (
         "religijos naujienų" in title_lower
@@ -166,6 +170,7 @@ def apdoroti_straipsni(entry, is_main=True):
             f"Praleidžiamas savaitraščio įrašas: {getattr(entry, 'title', '')}"
         )
         return None
+    # ----------------------------------------------------------------
 
     try:
         pub_date_obj = datetime.datetime(*entry.published_parsed[:6])
@@ -194,10 +199,35 @@ def apdoroti_straipsni(entry, is_main=True):
         else izanga_clean
     )
 
+    # --- 4 pakopų nuotraukos paieška (užtikrina, kad neliktų be foto) ---
     tituline_nuotrauka = ""
-    paveikslelis = re.search(r'<img[^>]+src="([^">]+)"', aprasymas)
-    if paveikslelis:
-        tituline_nuotrauka = paveikslelis.group(1)
+
+    # 1. Tikriname RSS <media:content>
+    if hasattr(entry, "media_content") and entry.media_content:
+        for media in entry.media_content:
+            if "url" in media:
+                tituline_nuotrauka = media["url"]
+                break
+
+    # 2. Tikriname RSS <enclosure>
+    if not tituline_nuotrauka and hasattr(entry, "enclosures") and entry.enclosures:
+        for enc in entry.enclosures:
+            if enc.get("type", "").startswith("image/") or enc.get("href", "").endswith((".jpg", ".jpeg", ".png", ".webp")):
+                tituline_nuotrauka = enc.get("href", "")
+                break
+
+    # 3. Tikriname <img src="..."> aprašyme
+    if not tituline_nuotrauka:
+        paveikslelis = re.search(r'<img[^>]+src="([^">]+)"', aprasymas)
+        if paveikslelis:
+            tituline_nuotrauka = paveikslelis.group(1)
+
+    # 4. Jei nėra, ieškome pirmos nuotraukos pačiame straipsnio tekste
+    if not tituline_nuotrauka and hasattr(entry, "content") and len(entry.content) > 0:
+        paveikslelis_tekste = re.search(r'<img[^>]+src="([^">]+)"', entry.content[0].value)
+        if paveikslelis_tekste:
+            tituline_nuotrauka = paveikslelis_tekste.group(1)
+    # --------------------------------------------------------------------
 
     pilnas_tekstas = (
         entry.content[0].value
@@ -270,8 +300,7 @@ def apdoroti_straipsni(entry, is_main=True):
 print("Nuskaitomas pagrindinis RSS srautas (Religija)...")
 for puslapis in range(1, 10):
     rss_url = (
-        "https://www.bernardinai.lt/feed/mailerlite-religija/?paged="
-        f"{puslapis}"
+        f"https://www.bernardinai.lt/feed/mailerlite-religija/?paged={puslapis}"
     )
     feed = feedparser.parse(rss_url)
     if not feed.entries:
@@ -785,10 +814,10 @@ wp_user = os.environ.get("WP_USERNAME")
 wp_pass = os.environ.get("WP_APP_PASSWORD")
 wp_category = int(
     os.environ.get("WP_CATEGORY_ID_RELIGIJA", 65204)
-)  # Numatytasis naujosios kategorijos ID: 65204
+)  # Fiksuota religijos kategorija 65204
 wp_acf_author_id = 8149  # Fiksuotas „Bernardinai.lt“ ACF autoriaus ID
 
-if wp_user and wp_pass and wp_category > 0:
+if wp_user and wp_pass:
     print("Kuriamas informacinis įrašas Bernardinai.lt svetainėje...")
 
     wp_user_clean = wp_user.strip()
@@ -807,6 +836,7 @@ if wp_user and wp_pass and wp_category > 0:
         "User-Agent": "Mozilla/5.0",
     }
 
+    # 1. BANDOME ĮKELTI TITULINĘ NUOTRAUKĄ Į WORDPRESS MEDIA BIBLIOTEKĄ
     featured_media_id = None
     if cover_bg_image and cover_bg_image.startswith("http"):
         try:
@@ -857,6 +887,7 @@ if wp_user and wp_pass and wp_category > 0:
                 f" {e}"
             )
 
+    # 2. SUFORMUOJAME TRUMPĄJĄ IŠTRAUKĄ (IKI 140 SP. Ž.) IR STRAIPSNIO TURINĮ
     trumpa_istrauka = (
         "Bernardinai.lt religijos naujienų ir tikėjimo savaitraštis Nr."
         f" {leidinio_numeris}. {leidinio_data} paruoštas svarbiausių tekstų"
@@ -881,10 +912,12 @@ if wp_user and wp_pass and wp_category > 0:
         "content": wp_html_turinys,
         "excerpt": trumpa_istrauka,
         "status": "publish" if is_real_run else "draft",
-        "categories": [wp_category],
+        "categories": [wp_category],  # Fiksuotai 65204
         "acf": {
             "short_description": trumpa_istrauka,
-            "author": [wp_acf_author_id],
+            "author": [
+                wp_acf_author_id
+            ],  # Priskiriame 8149 jūsų ACF ryšio laukui
         },
     }
 
@@ -915,6 +948,6 @@ if wp_user and wp_pass and wp_category > 0:
         print(f">>> KLAIDA kuriant WordPress įrašą: {e}")
 else:
     print(
-        ">>> WP_USERNAME, WP_APP_PASSWORD arba WP_CATEGORY_ID_RELIGIJA nerasti"
-        " aplinkoje. Įrašas svetainėje nekuriamas."
+        ">>> WP_USERNAME arba WP_APP_PASSWORD nerasti aplinkoje. Įrašas"
+        " svetainėje nekuriamas."
     )
