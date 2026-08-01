@@ -8,6 +8,7 @@ import re
 import sys
 import traceback
 import urllib.error
+import urllib.parse
 import urllib.request
 from weasyprint import HTML
 from zoneinfo import ZoneInfo
@@ -149,6 +150,21 @@ if os.path.exists(logo_failas):
         encoded_string = base64.b64encode(image_file.read()).decode("utf-8")
         logo_src = f"data:image/png;base64,{encoded_string}"
 
+
+# --- Nuotraukų URL valymo funkcija (pašalina weserv.nl proxy) ---
+def isvalyti_img_url(url):
+    if not url:
+        return ""
+    if "images.weserv.nl" in url and "url=" in url:
+        match = re.search(r"url=([^&]+)", url)
+        if match:
+            url = urllib.parse.unquote(match.group(1))
+    url = url.replace("&#038;", "&")
+    if url and not url.startswith("http"):
+        url = "https://" + url.lstrip("/")
+    return url
+
+
 matyti_url = set()
 pagrindiniai_straipsniai = []
 kiti_straipsniai = []
@@ -159,7 +175,6 @@ def apdoroti_straipsni(entry, is_main=True):
     if link in matyti_url:
         return None
 
-    # --- Neįtraukiame paties „Religijos savaitraščio“ straipsnių ---
     title_lower = getattr(entry, "title", "").lower()
     if (
         "religijos naujienų" in title_lower
@@ -170,7 +185,6 @@ def apdoroti_straipsni(entry, is_main=True):
             f"Praleidžiamas savaitraščio įrašas: {getattr(entry, 'title', '')}"
         )
         return None
-    # ----------------------------------------------------------------
 
     try:
         pub_date_obj = datetime.datetime(*entry.published_parsed[:6])
@@ -199,34 +213,48 @@ def apdoroti_straipsni(entry, is_main=True):
         else izanga_clean
     )
 
-    # --- 4 pakopų nuotraukos paieška (užtikrina, kad neliktų be foto) ---
+    # --- 4 pakopų nuotraukos paieška su automatiniu URL valymu ---
     tituline_nuotrauka = ""
 
     # 1. Tikriname RSS <media:content>
     if hasattr(entry, "media_content") and entry.media_content:
         for media in entry.media_content:
             if "url" in media:
-                tituline_nuotrauka = media["url"]
+                tituline_nuotrauka = isvalyti_img_url(media["url"])
                 break
 
     # 2. Tikriname RSS <enclosure>
-    if not tituline_nuotrauka and hasattr(entry, "enclosures") and entry.enclosures:
+    if (
+        not tituline_nuotrauka
+        and hasattr(entry, "enclosures")
+        and entry.enclosures
+    ):
         for enc in entry.enclosures:
-            if enc.get("type", "").startswith("image/") or enc.get("href", "").endswith((".jpg", ".jpeg", ".png", ".webp")):
-                tituline_nuotrauka = enc.get("href", "")
+            if enc.get("type", "").startswith("image/") or enc.get(
+                "href", ""
+            ).endswith((".jpg", ".jpeg", ".png", ".webp")):
+                tituline_nuotrauka = isvalyti_img_url(enc.get("href", ""))
                 break
 
     # 3. Tikriname <img src="..."> aprašyme
     if not tituline_nuotrauka:
         paveikslelis = re.search(r'<img[^>]+src="([^">]+)"', aprasymas)
         if paveikslelis:
-            tituline_nuotrauka = paveikslelis.group(1)
+            tituline_nuotrauka = isvalyti_img_url(paveikslelis.group(1))
 
     # 4. Jei nėra, ieškome pirmos nuotraukos pačiame straipsnio tekste
-    if not tituline_nuotrauka and hasattr(entry, "content") and len(entry.content) > 0:
-        paveikslelis_tekste = re.search(r'<img[^>]+src="([^">]+)"', entry.content[0].value)
+    if (
+        not tituline_nuotrauka
+        and hasattr(entry, "content")
+        and len(entry.content) > 0
+    ):
+        paveikslelis_tekste = re.search(
+            r'<img[^>]+src="([^">]+)"', entry.content[0].value
+        )
         if paveikslelis_tekste:
-            tituline_nuotrauka = paveikslelis_tekste.group(1)
+            tituline_nuotrauka = isvalyti_img_url(
+                paveikslelis_tekste.group(1)
+            )
     # --------------------------------------------------------------------
 
     pilnas_tekstas = (
@@ -300,7 +328,8 @@ def apdoroti_straipsni(entry, is_main=True):
 print("Nuskaitomas pagrindinis RSS srautas (Religija)...")
 for puslapis in range(1, 10):
     rss_url = (
-        f"https://www.bernardinai.lt/feed/mailerlite-religija/?paged={puslapis}"
+        "https://www.bernardinai.lt/feed/mailerlite-religija/?paged="
+        f"{puslapis}"
     )
     feed = feedparser.parse(rss_url)
     if not feed.entries:
@@ -833,10 +862,13 @@ if wp_user and wp_pass:
         "Authorization": basic_val,
         "X-HTTP-Authorization": basic_val,
         "REDIRECT_HTTP_AUTHORIZATION": basic_val,
-        "User-Agent": "Mozilla/5.0",
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            " (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        ),
     }
 
-# 1. BANDOME ĮKELTI TITULINĘ NUOTRAUKĄ Į WORDPRESS MEDIA BIBLIOTEKĄ
+    # 1. BANDOME ĮKELTI TITULINĘ NUOTRAUKĄ Į WORDPRESS MEDIA BIBLIOTEKĄ
     featured_media_id = None
     if cover_bg_image and cover_bg_image.startswith("http"):
         try:
@@ -845,21 +877,22 @@ if wp_user and wp_pass:
                 svara_img_url = svara_img_url.split("?")[0]
 
             print(f"Atsisiunčiama viršelio nuotrauka iš: {svara_img_url}")
-            
+
             img_req = urllib.request.Request(
-                svara_img_url, 
+                svara_img_url,
                 headers={
                     "User-Agent": (
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                        " (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+                        " AppleWebKit/537.36 (KHTML, like Gecko)"
+                        " Chrome/122.0.0.0 Safari/537.36"
                     ),
                     "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
-                }
+                },
             )
             with urllib.request.urlopen(img_req) as resp:
                 image_data = resp.read()
 
-            # --- NAUJA: Dinamiškai nustatome teisingą formatą pagal URL (kad Wordfence neblokuotų!) ---
+            # Dinamiškai parenkame teisingą formatą (.webp / .png / .jpg), kad Wordfence neblokuotų
             ext = ".jpg"
             mime_type = "image/jpeg"
             url_lower = svara_img_url.lower()
@@ -876,7 +909,6 @@ if wp_user and wp_pass:
             media_headers["Content-Disposition"] = (
                 f'attachment; filename="{failo_varda}"'
             )
-            # -----------------------------------------------------------------------------------------
 
             req_media = urllib.request.Request(
                 "https://www.bernardinai.lt/wp-json/wp/v2/media",
@@ -892,7 +924,10 @@ if wp_user and wp_pass:
                     f" {featured_media_id}"
                 )
         except urllib.error.HTTPError as e:
-            print(f">>> KLAIDA įkeliant nuotrauką į Media biblioteką (kodas {e.code})")
+            print(
+                ">>> KLAIDA įkeliant nuotrauką į Media biblioteką (kodas"
+                f" {e.code}): {e.read().decode('utf-8')}"
+            )
         except Exception as e:
             print(
                 ">>> NEPAVYKO įkelti titulinės nuotraukos (tęsiame be jos):"
@@ -924,12 +959,10 @@ if wp_user and wp_pass:
         "content": wp_html_turinys,
         "excerpt": trumpa_istrauka,
         "status": "publish" if is_real_run else "draft",
-        "categories": [wp_category],  # Fiksuotai 65204
+        "categories": [wp_category],
         "acf": {
             "short_description": trumpa_istrauka,
-            "author": [
-                wp_acf_author_id
-            ],  # Priskiriame 8149 jūsų ACF ryšio laukui
+            "author": [wp_acf_author_id],
         },
     }
 
