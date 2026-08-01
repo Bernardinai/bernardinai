@@ -1,4 +1,4 @@
-name: Religijos Savaitraštis
+name: Religijos Savaitrastis
 
 on:
   schedule:
@@ -7,42 +7,63 @@ on:
   workflow_dispatch:
     inputs:
       tikras_leidinys:
-        description: 'Tikras leidinys (pažymėjus: siųsti MailerLite ir publikuoti WordPress viešai)'
-        required: false
-        default: false
+        description: 'Pazymeti, jei norite isleisti TIKRA numeri'
+        required: true
         type: boolean
+        default: false
+
+permissions:
+  contents: write
 
 jobs:
-  build:
+  kurti-pdf:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout repozitorija
-      uses: actions/checkout@v3
+      - name: 1. Atsisiunciami repozitorijos failai
+        uses: actions/checkout@v4
 
-    - name: Paruošti Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
+      - name: 2. Paruosiama Python aplinka
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
 
-    - name: Įdiegti priklausomybes
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y fonts-dejavu
-        pip install feedparser reportlab weasyprint
+      - name: 3. Diegiamos Linux sistemos bibliotekos
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0
 
-    - name: Paleisti Religijos savaitraščio agentą
-      env:
-        MAILERLITE_API_KEY: ${{ secrets.MAILERLITE_API_KEY }}
-        WP_USERNAME: ${{ secrets.WP_USERNAME }}
-        WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
-        WP_CATEGORY_ID_RELIGIJA: ${{ secrets.WP_CATEGORY_ID_RELIGIJA }}
-        TIKRAS_LEIDINYS: ${{ github.event.inputs.tikras_leidinys || 'false' }}
-      run: python naujienlaiskis_religija.py
+      - name: 4. Diegiamos Python bibliotekos
+        run: |
+          python -m pip install --upgrade pip
+          pip install feedparser weasyprint tzdata
 
-    - name: Išsaugoti atnaujintą numeracijos failą
-      run: |
-        git config --global user.name "GitHub Actions Bot"
-        git config --global user.email "actions@github.com"
-        git add leidinio_numeris_religija.txt || true
-        git commit -m "Atnaujintas Religijos savaitraščio numeris [skip ci]" || echo "Nėra pakeitimų išsaugojimui"
-        git push || echo "Nepavyko išsaugoti (gali būti bandomasis paleidimas)"
+      - name: 5. Generuojamas religijos savaitrastis
+        env:
+          MAILERLITE_API_KEY: ${{ secrets.MAILERLITE_API_KEY }}
+          EVENT_NAME: ${{ github.event_name }}
+          TIKRAS_LEIDINYS: ${{ github.event.inputs.tikras_leidinys }}
+          WP_USERNAME: ${{ secrets.WP_USERNAME }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          WP_CATEGORY_ID_RELIGIJA: ${{ secrets.WP_CATEGORY_ID_RELIGIJA }}
+        run: python naujienlaiskis_religija.py
+
+      - name: 6. Issaugomas archyvas repozitorijoje
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add archyvas/ leidinio_numeris_religija.txt
+          if ! git diff --staged --quiet; then
+            git commit -m "Automatinis Religijos PDF archyvo papildymas"
+            git pull --rebase origin main
+            git push
+          fi
+
+      - name: 7. FTP ikelimas i serveri
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./archyvas/
+          server-dir: ./
+          state-name: .ftp-deploy-sync-state-religija.json
