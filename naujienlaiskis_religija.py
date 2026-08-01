@@ -841,14 +841,11 @@ if wp_user and wp_pass:
     if cover_bg_image and cover_bg_image.startswith("http"):
         try:
             svara_img_url = isvalyti_img_url(cover_bg_image)
-
-            # Jei nuotrauka yra iš Bernardinai.lt, pašaliname galimus URL parametrus po '?'
             if "bernardinai.lt/wp-content/uploads/" in svara_img_url:
                 svara_img_url = svara_img_url.split("?")[0]
 
             print(f"Atsisiunčiama viršelio nuotrauka iš: {svara_img_url}")
             
-            # Naudojame pilną naršyklės User-Agent, kad Wordfence nelaikytų mūsų botu
             img_req = urllib.request.Request(
                 svara_img_url, 
                 headers={
@@ -862,12 +859,24 @@ if wp_user and wp_pass:
             with urllib.request.urlopen(img_req) as resp:
                 image_data = resp.read()
 
-            failo_varda = f"religijos_savaitrastis_cover_{today_str}.jpg"
+            # --- NAUJA: Dinamiškai nustatome teisingą formatą pagal URL (kad Wordfence neblokuotų!) ---
+            ext = ".jpg"
+            mime_type = "image/jpeg"
+            url_lower = svara_img_url.lower()
+            if ".webp" in url_lower:
+                ext = ".webp"
+                mime_type = "image/webp"
+            elif ".png" in url_lower:
+                ext = ".png"
+                mime_type = "image/png"
+
+            failo_varda = f"religijos_savaitrastis_cover_{today_str}{ext}"
             media_headers = wp_headers.copy()
-            media_headers["Content-Type"] = "image/jpeg"
+            media_headers["Content-Type"] = mime_type
             media_headers["Content-Disposition"] = (
                 f'attachment; filename="{failo_varda}"'
             )
+            # -----------------------------------------------------------------------------------------
 
             req_media = urllib.request.Request(
                 "https://www.bernardinai.lt/wp-json/wp/v2/media",
@@ -883,8 +892,6 @@ if wp_user and wp_pass:
                     f" {featured_media_id}"
                 )
         except urllib.error.HTTPError as e:
-            err_body = e.read().decode('utf-8')
-            # Jei grąžina Wordfence HTML klaidą, parodome trumpesnį pranešimą
             print(f">>> KLAIDA įkeliant nuotrauką į Media biblioteką (kodas {e.code})")
         except Exception as e:
             print(
