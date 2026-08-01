@@ -3,6 +3,7 @@ import re
 import sys
 import html
 import time
+import urllib.parse
 import feedparser
 import urllib.request
 import numpy as np
@@ -19,8 +20,26 @@ IMAGE_FILE = "article_image.jpg"
 FONT_TITLE_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 FONT_SUB_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
+# --- NAUJA: Išvalome weserv.nl proxy, kad visada gautume tikrą nuotraukos adresą ---
+def isvalyti_img_url(url):
+    if not url:
+        return ""
+    if "images.weserv.nl" in url and "url=" in url:
+        match = re.search(r"url=([^&]+)", url)
+        if match:
+            url = urllib.parse.unquote(match.group(1))
+    url = url.replace("&#038;", "&")
+    if url and not url.startswith("http"):
+        url = "https://" + url.lstrip("/")
+    return url
+
 def main():
-    feedparser.USER_AGENT = "BernardinaiVideoBot/1.0"
+    # Naudojame realios naršyklės antraštę, kad Wordfence neblokuotų RSS srauto ir nuotraukų
+    real_user_agent = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        " (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+    )
+    feedparser.USER_AGENT = real_user_agent
     dynamic_url = f"{RSS_URL}&nocache={int(time.time())}"
     
     feed = feedparser.parse(dynamic_url)
@@ -49,7 +68,7 @@ def main():
 
     image_url = None
     if 'media_content' in latest_entry and len(latest_entry.media_content) > 0:
-        image_url = latest_entry.media_content[0].get('url')
+        image_url = isvalyti_img_url(latest_entry.media_content[0].get('url'))
     
     if not image_url:
         content_search = latest_entry.get('description', '')
@@ -57,12 +76,23 @@ def main():
             content_search += " " + str(latest_entry.content)
         img_match = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', content_search, re.IGNORECASE)
         if img_match:
-            image_url = img_match.group(1)
+            image_url = isvalyti_img_url(img_match.group(1))
 
     has_image = False
     if image_url:
         try:
-            req = urllib.request.Request(image_url, headers={'User-Agent': 'BernardinaiVideoBot/1.0'})
+            # Nuimame galimus URL parametrus, jei tai vietiškas WordPress failas
+            if "bernardinai.lt/wp-content/uploads/" in image_url:
+                image_url = image_url.split("?")[0]
+
+            print(f"Siunčiama nuotrauka iš: {image_url}")
+            req = urllib.request.Request(
+                image_url, 
+                headers={
+                    'User-Agent': real_user_agent,
+                    'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8'
+                }
+            )
             with urllib.request.urlopen(req) as response, open(IMAGE_FILE, 'wb') as out_file:
                 out_file.write(response.read())
             
