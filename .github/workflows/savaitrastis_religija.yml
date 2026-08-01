@@ -1,0 +1,34 @@
+name: Religijos Savaitraštis
+
+on:
+  schedule:
+    # Sekmadieniais 04:40 UTC laiku (07:40 Lietuvos vasaros laiku / 06:40 žiemos laiku)
+    - cron: '40 4 * * 0'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repozitorija
+      uses: actions/checkout@v3
+
+    - name: Paruošti Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Įdiegti priklausomybes
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y fonts-dejavu
+        pip install feedparser reportlab weasyprint
+
+    - name: Paleisti Religijos savaitraščio agentą
+      env:
+        MAILERLITE_API_KEY: ${{ secrets.MAILERLITE_API_KEY }}
+        WP_USERNAME: ${{ secrets.WP_USERNAME }}
+        WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+        WP_CATEGORY_ID_RELIGIJA: ${{ secrets.WP_CATEGORY_ID_RELIGIJA }}
+        TIKRAS_LEIDINYS: "false"  # Testavimo metu paliekame "false" (sukurs draftus)
+      run: python naujienlaiskis_religija.py
