@@ -186,12 +186,30 @@ def gauti_aktyvias_reklamas(leidinio_tipas, wp_cat_id=65237):
             posts = json.loads(resp.read().decode("utf-8"))
             for post in posts:
                 acf = post.get("acf", {})
-                leidinys = acf.get("leidinys", "")
-                nuo = acf.get("galioja_nuo", "")
-                iki = acf.get("galioja_iki", "")
 
-                tinka_leidinys = leidinys in [leidinio_tipas, "abi"]
-                galioja = nuo <= today_str_reklama <= iki
+                # Saugus Leidinio laukelio tikrinimas (supranta sąrašus ir tekstą)
+                leidinys_data = acf.get("leidinys", "")
+                if isinstance(leidinys_data, list):
+                    leidinys_val = [
+                        str(x).lower().strip() for x in leidinys_data
+                    ]
+                    tinka_leidinys = any(
+                        x in [leidinio_tipas.lower(), "abi"]
+                        for x in leidinys_val
+                    )
+                else:
+                    leidinys_val = str(leidinys_data).lower().strip()
+                    tinka_leidinys = leidinys_val in [
+                        leidinio_tipas.lower(),
+                        "abi",
+                    ]
+
+                # Saugus datų tikrinimas
+                nuo = str(acf.get("galioja_nuo", "")).strip()
+                iki = str(acf.get("galioja_iki", "")).strip()
+                galioja = (not nuo or nuo <= today_str_reklama) and (
+                    not iki or today_str_reklama <= iki
+                )
 
                 if tinka_leidinys and galioja:
                     img_url = ""
@@ -203,9 +221,45 @@ def gauti_aktyvias_reklamas(leidinio_tipas, wp_cat_id=65237):
                         pass
 
                     if img_url:
+                        img_clean = isvalyti_img_url(img_url)
+
+                        # KONVERTUOJAME Į BASE64 PDF FAILIUI (100% apsauga nuo Wordfence blokuotės)
+                        img_pdf_src = img_clean
+                        try:
+                            img_req = urllib.request.Request(
+                                img_clean,
+                                headers={
+                                    "User-Agent": (
+                                        "Mozilla/5.0 (Windows NT 10.0; Win64;"
+                                        " x64) AppleWebKit/537.36 (KHTML, like"
+                                        " Gecko) Chrome/122.0.0.0"
+                                        " Safari/537.36"
+                                    ),
+                                    "Accept": "image/*,*/*;q=0.8",
+                                },
+                            )
+                            with urllib.request.urlopen(
+                                img_req, timeout=10
+                            ) as i_resp:
+                                i_data = i_resp.read()
+                                c_type = (
+                                    i_resp.headers.get_content_type()
+                                    or "image/jpeg"
+                                )
+                                b64_str = base64.b64encode(i_data).decode(
+                                    "utf-8"
+                                )
+                                img_pdf_src = f"data:{c_type};base64,{b64_str}"
+                        except Exception as ex:
+                            print(
+                                "Nepavyko konvertuoti reklamos paveikslėlio į"
+                                f" base64: {ex}"
+                            )
+
                         tinkamos_reklamos.append(
                             {
-                                "img": isvalyti_img_url(img_url),
+                                "img_pdf": img_pdf_src,
+                                "img_email": img_clean,
                                 "link": acf.get("nuoroda", "#"),
                                 "title": post.get("title", {}).get(
                                     "rendered", "Reklama"
@@ -222,7 +276,11 @@ def gauti_aktyvias_reklamas(leidinio_tipas, wp_cat_id=65237):
 def generuoti_reklamos_html(reklamos_sarasas, vieta_idx, formatas="pdf"):
     if reklamos_sarasas and len(reklamos_sarasas) > 0:
         parinkta = reklamos_sarasas[vieta_idx % len(reklamos_sarasas)]
-        img_src = parinkta["img"]
+        img_src = (
+            parinkta["img_pdf"]
+            if formatas == "pdf"
+            else parinkta["img_email"]
+        )
         link_url = parinkta["link"]
         title = parinkta["title"]
 
@@ -407,9 +465,13 @@ def apdoroti_straipsni(entry, is_main=True):
     }
 
 
+# --- SUGRAŽINTI TIKRI KULTŪROS RSS SRAUTAI ---
 print("Nuskaitomas pagrindinis RSS srautas (Kultūra)...")
 for puslapis in range(1, 10):
-    rss_url = f"https://www.bernardinai.lt/feed/mailerlite/?paged={puslapis}"
+    rss_url = (
+        "https://www.bernardinai.lt/feed/mailerlite-kultura/?paged="
+        f"{puslapis}"
+    )
     feed = feedparser.parse(rss_url)
     if not feed.entries:
         break
@@ -421,7 +483,8 @@ for puslapis in range(1, 10):
 print("Nuskaitomas papildomas Kultūros RSS srautas...")
 for puslapis in range(1, 10):
     rss_url = (
-        f"https://www.bernardinai.lt/feed/mailerlite-visi/?paged={puslapis}"
+        "https://www.bernardinai.lt/feed/mailerlite-kultura-visi/?paged="
+        f"{puslapis}"
     )
     feed = feedparser.parse(rss_url)
     if not feed.entries:
