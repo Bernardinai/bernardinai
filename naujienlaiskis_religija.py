@@ -162,15 +162,15 @@ def isvalyti_img_url(url):
     return url
 
 
-# --- AUTOMATINIS SAVAITRAŠČIŲ REKLAMŲ GAVIMAS IŠ WORDPRESS (ID: 65237) ---
-def gauti_reklamos_bloka(leidinio_tipas, formatas="pdf", wp_cat_id=65237):
+# --- 1. VIENĄ KARTĄ ATSISIUNČIAME VISAS GALIOJANČIAS REKLAMAS IŠ WORDPRESS ---
+def gauti_aktyvias_reklamas(leidinio_tipas, wp_cat_id=65237):
     today_str_reklama = datetime.datetime.now().strftime("%Y-%m-%d")
     url = (
         "https://www.bernardinai.lt/wp-json/wp/v2/posts?"
-        f"categories={wp_cat_id}&per_page=5&_embed"
+        f"categories={wp_cat_id}&per_page=20&_embed"
     )
 
-    aktyvi_reklama = None
+    tinkamos_reklamos = []
     try:
         req = urllib.request.Request(
             url,
@@ -203,22 +203,28 @@ def gauti_reklamos_bloka(leidinio_tipas, formatas="pdf", wp_cat_id=65237):
                         pass
 
                     if img_url:
-                        aktyvi_reklama = {
-                            "img": isvalyti_img_url(img_url),
-                            "link": acf.get("nuoroda", "#"),
-                            "title": post.get("title", {}).get(
-                                "rendered", "Reklama"
-                            ),
-                        }
-                        break
+                        tinkamos_reklamos.append(
+                            {
+                                "img": isvalyti_img_url(img_url),
+                                "link": acf.get("nuoroda", "#"),
+                                "title": post.get("title", {}).get(
+                                    "rendered", "Reklama"
+                                ),
+                            }
+                        )
     except Exception as e:
-        print(f"Nepavyko patikrinti reklamų iš WP (naudojamas standartas): {e}")
+        print(f"Nepavyko gauti reklamų sąrašo iš WP: {e}")
 
-    # 1. JEI RASTA AKTYVI REKLAMA – grąžiname reklaminį skydelį
-    if aktyvi_reklama:
-        img_src = aktyvi_reklama["img"]
-        link_url = aktyvi_reklama["link"]
-        title = aktyvi_reklama["title"]
+    return tinkamos_reklamos
+
+
+# --- 2. GENERUOJAME REKLAMOS HTML ROTACIJOS PRINCIPU PAGAL INDEKSĄ ---
+def generuoti_reklamos_html(reklamos_sarasas, vieta_idx, formatas="pdf"):
+    if reklamos_sarasas and len(reklamos_sarasas) > 0:
+        parinkta = reklamos_sarasas[vieta_idx % len(reklamos_sarasas)]
+        img_src = parinkta["img"]
+        link_url = parinkta["link"]
+        title = parinkta["title"]
 
         if formatas == "pdf":
             return f"""
@@ -237,7 +243,6 @@ def gauti_reklamos_bloka(leidinio_tipas, formatas="pdf", wp_cat_id=65237):
         </div>
             """
 
-    # 2. JEI AKTYVIOS REKLAMOS NĖRA – rodome standartinį kvietimą
     if formatas == "pdf":
         return """
         <div class="ad-box">
@@ -456,6 +461,10 @@ if not cover_bg_image:
             cover_bg_image = straipsnis["image"]
             break
 
+# Atsisiunčiame aktyvių reklamų sąrašą kartą per siuntimą (WP kategorija ID: 65237)
+aktyvios_reklamos = gauti_aktyvias_reklamas("religija", 65237)
+reklamos_indeksas = 0
+
 html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>
     @page {{
@@ -633,12 +642,13 @@ for i, straipsnis in enumerate(pagrindiniai_straipsniai):
             {straipsnis['content']}
         </div>
         """
-        + gauti_reklamos_bloka("religija", "pdf")
+        + generuoti_reklamos_html(aktyvios_reklamos, reklamos_indeksas, "pdf")
         + """
         <div class="back-to-toc"><a href="#turinys">↑ Grįžti į turinį</a></div>
     </div>
     """
     )
+    reklamos_indeksas += 1
 
 if kiti_straipsniai:
     html_kodas += """
@@ -657,12 +667,15 @@ if kiti_straipsniai:
                 </div>
                 {straipsnis['content']}
                 """
-            + gauti_reklamos_bloka("religija", "pdf")
+            + generuoti_reklamos_html(
+                aktyvios_reklamos, reklamos_indeksas, "pdf"
+            )
             + """
                 <div class="back-to-toc"><a href="#turinys">↑ Grįžti į turinį</a></div>
             </div>
         """
         )
+        reklamos_indeksas += 1
     html_kodas += """
         </div>
     </div>
@@ -809,7 +822,10 @@ if api_key:
             </div>
             """
 
-    email_html += gauti_reklamos_bloka("religija", "email")
+    email_html += generuoti_reklamos_html(
+        aktyvios_reklamos, reklamos_indeksas, "email"
+    )
+    reklamos_indeksas += 1
     email_html += f"""
         <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; font-size: 12px; color: #999;">
             © {current_year} VŠĮ BERNARDINAI.LT. Visos teisės saugomos.<br>
