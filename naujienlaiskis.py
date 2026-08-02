@@ -270,14 +270,8 @@ def apdoroti_straipsni(entry, is_main=True):
         return None
 
     title_lower = getattr(entry, "title", "").lower()
-    if (
-        "kultūros naujienų" in title_lower
-        or "kultūros savaitraštis" in title_lower
-        or "savaitraštis nr." in title_lower
-    ):
-        print(
-            f"Praleidžiamas savaitraščio įrašas: {getattr(entry, 'title', '')}"
-        )
+    if "kultūros savaitraštis" in title_lower or "savaitraštis nr." in title_lower:
+        print(f"Praleidžiamas savaitraščio įrašas: {getattr(entry, 'title', '')}")
         return None
 
     try:
@@ -480,7 +474,7 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     .cover-content {{ position: absolute; top: 48%; left: 50%; transform: translate(-50%, -50%); text-align: center; width: 88%; color: white; z-index: 3; }}
     .logo-container {{ background-color: rgba(255, 255, 255, 0.9); padding: 15px 30px; border-radius: 12px; display: inline-block; margin-bottom: 25px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }}
     .logo-main {{ max-width: 220px; display: block; }}
-    .main-title {{ font-size: 34pt; font-weight: bold; margin-bottom: 15px; letter-spacing: 1px; text-transform: uppercase; line-height: 1.15; }}
+    .main-title {{ font-size: 38pt; font-weight: bold; margin-bottom: 15px; letter-spacing: 1px; text-transform: uppercase; line-height: 1.15; }}
     .sub-title {{ font-size: 16pt; color: #E0E0E0; margin-bottom: 30px; font-style: italic; }}
     .divider {{ width: 80px; height: 3px; background-color: #d32f2f; margin: 0 auto 30px auto; }}
     .meta-box {{ display: inline-block; background-color: rgba(0,0,0,0.5); padding: 15px 30px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); }}
@@ -581,7 +575,7 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
             <div class="logo-container">
                 {f'<img src="{logo_src}" class="logo-main">' if logo_src else '<div style="color:#111; font-size: 24pt; font-weight:bold;">Bernardinai.lt</div>'}
             </div>
-            <div class="main-title">Kultūros naujienų ir<br>eseistikos savaitraštis</div>
+            <div class="main-title">Kultūros<br>savaitraštis</div>
             <div class="sub-title">Geriausi savaitės tekstai vienoje vietoje</div>
             <div class="divider"></div>
             <div class="meta-box">
@@ -606,7 +600,7 @@ for i, straipsnis in enumerate(pagrindiniai_straipsniai):
 if kiti_straipsniai:
     html_kodas += """
         </ul>
-        <div class="toc-section-title">Kiti savaitės kultūros ir eseistikos tekstai</div>
+        <div class="toc-section-title">Kiti savaitės kultūros tekstai</div>
         <ul class="toc-list">
 """
     for i, straipsnis in enumerate(kiti_straipsniai):
@@ -649,8 +643,8 @@ for i, straipsnis in enumerate(pagrindiniai_straipsniai):
 if kiti_straipsniai:
     html_kodas += """
     <div class="other-articles-section">
-        <div class="other-section-header">Kiti savaitės kultūros ir eseistikos tekstai</div>
-        <div class="other-section-subtitle">Čia rasite Bernardinai.lt redaktorių ir žurnalistų atrinktas svarbiausias savaitės kultūros naujienas, eseistiką bei knygų ir menų apžvalgas.</div>
+        <div class="other-section-header">Kiti savaitės kultūros tekstai</div>
+        <div class="other-section-subtitle">Čia rasite Bernardinai.lt redaktorių ir žurnalistų atrinktus svarbiausius savaitės kultūros tekstus, interviu bei menų apžvalgas.</div>
         <div class="article-columns">
     """
     for i, straipsnis in enumerate(kiti_straipsniai):
@@ -776,15 +770,15 @@ if api_key:
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Kultūros naujienų ir eseistikos savaitraštis</title>
+    <title>Kultūros savaitraštis</title>
 </head>
 <body style="margin: 0; padding: 0; background-color: #f4f4f4;">
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 20px;">
         <div style="text-align: center; margin-bottom: 30px;">
             <img src="https://raw.githubusercontent.com/Bernardinai/bernardinai/main/logo.png" alt="Bernardinai.lt" style="max-width: 200px;">
         </div>
-        <h1 style="text-align: center; color: #111; font-size: 24px;">Naujausias Kultūros naujienų ir eseistikos savaitraštis jau paruoštas!</h1>
-        <p style="text-align: center; color: #555; font-size: 16px;">Sveiki, paruošėme jums {leidinio_data} geriausių kultūros ir eseistikos tekstų rinkinį žurnalo formatu.</p>
+        <h1 style="text-align: center; color: #111; font-size: 24px;">Naujausias Kultūros savaitraštis jau paruoštas!</h1>
+        <p style="text-align: center; color: #555; font-size: 16px;">Sveiki, paruošėme jums {leidinio_data} geriausių kultūros tekstų rinkinį žurnalo formatu.</p>
         
         <div style="text-align: center; margin: 40px 0;">
             <a href="{pdf_url}" style="background-color: #d32f2f; color: #ffffff; padding: 15px 30px; text-decoration: none; font-size: 18px; font-weight: bold; border-radius: 5px; display: inline-block;">Atsisiųsti PDF savaitraštį</a>
@@ -805,8 +799,8 @@ if api_key:
 
     if kiti_straipsniai:
         email_html += """
-        <h2 style="color: #7a2222; border-bottom: 2px solid #7a2222; padding-bottom: 10px; margin-top: 40px;">Kiti savaitės kultūros ir eseistikos tekstai</h2>
-        <p style="color: #666; font-size: 13px; font-style: italic; margin-bottom: 20px;">Čia rasite Bernardinai.lt redaktorių ir žurnalistų atrinktas svarbiausias savaitės kultūros naujienas, eseistiką bei knygų ir menų apžvalgas.</p>
+        <h2 style="color: #7a2222; border-bottom: 2px solid #7a2222; padding-bottom: 10px; margin-top: 40px;">Kiti savaitės kultūros tekstai</h2>
+        <p style="color: #666; font-size: 13px; font-style: italic; margin-bottom: 20px;">Čia rasite Bernardinai.lt redaktorių ir žurnalistų atrinktus svarbiausius savaitės kultūros tekstus, interviu bei menų apžvalgas.</p>
         """
         for straipsnis in kiti_straipsniai:
             email_html += f"""
@@ -838,14 +832,9 @@ if api_key:
     payload_campaign = {
         "type": "regular",
         "groups": [kultura_group_id],
-        "subject": (
-            "Kultūros naujienų ir eseistikos savaitraštis |"
-            f" {leidinio_data}"
-        ),
+        "subject": f"Kultūros savaitraštis | {leidinio_data}",
         "from": "naujienlaiskis@bernardinai.lt",
-        "from_name": (
-            "Bernardinai.lt kultūros naujienų ir eseistikos savaitraštis"
-        ),
+        "from_name": "Bernardinai.lt kultūros savaitraštis",
         "language": "lt",
         "google_analytics": f"kulturos-savaitrastis-{today_str}",
     }
@@ -872,9 +861,9 @@ if api_key:
                 payload_content = {
                     "html": email_html,
                     "plain": (
-                        "Naujausias Kultūros naujienų ir eseistikos"
-                        " savaitraštis jau paruoštas!\n\nAtsisiųsti PDF galite"
-                        f" čia: {pdf_url}\n\nPeržiūrėti naršyklėje:"
+                        "Naujausias Kultūros savaitraštis jau"
+                        " paruoštas!\n\nAtsisiųsti PDF galite čia:"
+                        f" {pdf_url}\n\nPeržiūrėti naršyklėje:"
                         " {$url}\nAtsisakyti naujienlaiškio: {$unsubscribe}"
                     ),
                 }
@@ -1029,17 +1018,17 @@ if wp_user and wp_pass:
             )
 
     trumpa_istrauka = (
-        "Bernardinai.lt kultūros naujienų ir eseistikos savaitraštis Nr."
+        "Bernardinai.lt kultūros savaitraštis Nr."
         f" {leidinio_numeris}. {leidinio_data} paruoštas svarbiausių tekstų"
         " PDF rinkinys."
     )[:140]
 
     irasas_pavadinimas = (
-        "Kultūros naujienų ir eseistikos savaitraštis Nr."
+        "Kultūros savaitraštis Nr."
         f" {leidinio_numeris} | {leidinio_data}"
     )
 
-    wp_html_turinys = f"""<p>Skaitytojams pateikiame interneto dienraščio „Bernardinai.lt“ Kultūros naujienų ir eseistikos savaitraščio numerį ({leidinio_data}, Nr. {leidinio_numeris}). Šiame leidinyje rasite redaktorių atrinktus svarbiausius savaitės kultūros, eseistikos bei menų tekstus ir pokalbius, paruoštus patogiam skaitymui žurnalo formatu.</p>
+    wp_html_turinys = f"""<p>Skaitytojams pateikiame interneto dienraščio „Bernardinai.lt“ Kultūros savaitraščio numerį ({leidinio_data}, Nr. {leidinio_numeris}). Šiame leidinyje rasite redaktorių atrinktus svarbiausius savaitės kultūros tekstus ir pokalbius, paruoštus patogiam skaitymui žurnalo formatu.</p>
 <p style="margin: 30px 0; text-align: center;">
     <a href="{pdf_url}" target="_blank" rel="noopener noreferrer" style="background-color: #d32f2f; color: #ffffff; padding: 14px 28px; text-decoration: none; font-weight: bold; border-radius: 5px; display: inline-block; font-size: 16px;">
         Atsisiųsti PDF savaitraštį
