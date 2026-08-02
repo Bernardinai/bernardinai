@@ -77,7 +77,6 @@ if is_real_run:
 else:
     leidinio_numeris = "Bandomasis"
 
-# --- Funkcijos ankstesnio numerio gavėjų skaičiui ir linksniui gauti ---
 api_key = os.environ.get("MAILERLITE_API_KEY")
 
 
@@ -117,7 +116,6 @@ def gauti_paskutines_kampanijos_gavejus(api_key):
     return None
 
 
-# Suformuojame ankstesnio numerio eilutę
 ankstesnio_nr_tekstas = ""
 if is_real_run and numeris > 1:
     ankstesnis_nr_str = f"{current_year}/{numeris - 1}"
@@ -141,7 +139,6 @@ elif not is_real_run:
             "Ankstesnis savaitraščio numeris buvo išsiųstas"
             f" {gaveju_sk} {linksnis}."
         )
-# -----------------------------------------------------------------------------
 
 logo_src = ""
 logo_failas = "logo.png"
@@ -163,6 +160,98 @@ def isvalyti_img_url(url):
     if url and not url.startswith("http"):
         url = "https://" + url.lstrip("/")
     return url
+
+
+# --- AUTOMATINIS SAVAITRAŠČIŲ REKLAMŲ GAVIMAS IŠ WORDPRESS (ID: 65237) ---
+def gauti_reklamos_bloka(leidinio_tipas, formatas="pdf", wp_cat_id=65237):
+    today_str_reklama = datetime.datetime.now().strftime("%Y-%m-%d")
+    url = (
+        "https://www.bernardinai.lt/wp-json/wp/v2/posts?"
+        f"categories={wp_cat_id}&per_page=5&_embed"
+    )
+
+    aktyvi_reklama = None
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+                    " AppleWebKit/537.36 (KHTML, like Gecko)"
+                    " Chrome/122.0.0.0 Safari/537.36"
+                )
+            },
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            posts = json.loads(resp.read().decode("utf-8"))
+            for post in posts:
+                acf = post.get("acf", {})
+                leidinys = acf.get("leidinys", "")
+                nuo = acf.get("galioja_nuo", "")
+                iki = acf.get("galioja_iki", "")
+
+                tinka_leidinys = leidinys in [leidinio_tipas, "abi"]
+                galioja = nuo <= today_str_reklama <= iki
+
+                if tinka_leidinys and galioja:
+                    img_url = ""
+                    try:
+                        img_url = post["_embedded"]["wp:featuredmedia"][0][
+                            "source_url"
+                        ]
+                    except (KeyError, IndexError):
+                        pass
+
+                    if img_url:
+                        aktyvi_reklama = {
+                            "img": isvalyti_img_url(img_url),
+                            "link": acf.get("nuoroda", "#"),
+                            "title": post.get("title", {}).get(
+                                "rendered", "Reklama"
+                            ),
+                        }
+                        break
+    except Exception as e:
+        print(f"Nepavyko patikrinti reklamų iš WP (naudojamas standartas): {e}")
+
+    # 1. JEI RASTA AKTYVI REKLAMA – grąžiname reklaminį skydelį
+    if aktyvi_reklama:
+        img_src = aktyvi_reklama["img"]
+        link_url = aktyvi_reklama["link"]
+        title = aktyvi_reklama["title"]
+
+        if formatas == "pdf":
+            return f"""
+        <div class="ad-box" style="padding: 0; border: none; background: transparent; margin: 30px auto;">
+            <a href="{link_url}">
+                <img src="{img_src}" alt="{title}" style="width: 100%; max-width: 420px; height: auto; border-radius: 6px; display: block; margin: 0 auto;">
+            </a>
+        </div>
+            """
+        else:
+            return f"""
+        <div style="text-align: center; margin: 30px 0; padding: 15px 0; border-top: 1px solid #eee; border-bottom: 1px solid #eee;">
+            <a href="{link_url}" target="_blank" rel="noopener noreferrer">
+                <img src="{img_src}" alt="{title}" style="width: 100%; max-width: 600px; height: auto; border-radius: 6px; display: inline-block;">
+            </a>
+        </div>
+            """
+
+    # 2. JEI AKTYVIOS REKLAMOS NĖRA – rodome standartinį kvietimą
+    if formatas == "pdf":
+        return """
+        <div class="ad-box">
+            <div class="ad-title">Čia galėtų būti Jūsų reklama</div>
+            <div class="ad-contact">Kreipkitės: <a href="mailto:reklama@bernardinai.lt">reklama@bernardinai.lt</a></div>
+        </div>
+        """
+    else:
+        return """
+        <div style="margin: 30px auto; padding: 15px; background-color: #fcfcfc; border: 1px dashed #ccc; border-radius: 6px; text-align: center; max-width: 500px;">
+            <div style="font-size: 13px; font-weight: bold; color: #444; text-transform: uppercase; margin-bottom: 5px;">Čia galėtų būti Jūsų reklama</div>
+            <div style="font-size: 13px; color: #666;">Kreipkitės: <a href="mailto:reklama@bernardinai.lt" style="color: #7a2222; font-weight: bold; text-decoration: none;">reklama@bernardinai.lt</a></div>
+        </div>
+        """
 
 
 matyti_url = set()
@@ -213,17 +302,14 @@ def apdoroti_straipsni(entry, is_main=True):
         else izanga_clean
     )
 
-    # --- 4 pakopų nuotraukos paieška su automatiniu URL valymu ---
     tituline_nuotrauka = ""
 
-    # 1. Tikriname RSS <media:content>
     if hasattr(entry, "media_content") and entry.media_content:
         for media in entry.media_content:
             if "url" in media:
                 tituline_nuotrauka = isvalyti_img_url(media["url"])
                 break
 
-    # 2. Tikriname RSS <enclosure>
     if (
         not tituline_nuotrauka
         and hasattr(entry, "enclosures")
@@ -236,13 +322,11 @@ def apdoroti_straipsni(entry, is_main=True):
                 tituline_nuotrauka = isvalyti_img_url(enc.get("href", ""))
                 break
 
-    # 3. Tikriname <img src="..."> aprašyme
     if not tituline_nuotrauka:
         paveikslelis = re.search(r'<img[^>]+src="([^">]+)"', aprasymas)
         if paveikslelis:
             tituline_nuotrauka = isvalyti_img_url(paveikslelis.group(1))
 
-    # 4. Jei nėra, ieškome pirmos nuotraukos pačiame straipsnio tekste
     if (
         not tituline_nuotrauka
         and hasattr(entry, "content")
@@ -255,7 +339,6 @@ def apdoroti_straipsni(entry, is_main=True):
             tituline_nuotrauka = isvalyti_img_url(
                 paveikslelis_tekste.group(1)
             )
-    # --------------------------------------------------------------------
 
     pilnas_tekstas = (
         entry.content[0].value
@@ -536,7 +619,8 @@ html_kodas += f"""
 """
 
 for i, straipsnis in enumerate(pagrindiniai_straipsniai):
-    html_kodas += f"""
+    html_kodas += (
+        f"""
     <div class="article-page" id="pagrindinis_{i}">
         <div class="article-top-block">
             <div class="article-header">
@@ -548,13 +632,13 @@ for i, straipsnis in enumerate(pagrindiniai_straipsniai):
         <div class="article-columns">
             {straipsnis['content']}
         </div>
-        <div class="ad-box">
-            <div class="ad-title">Čia galėtų būti Jūsų reklama</div>
-            <div class="ad-contact">Kreipkitės: <a href="mailto:reklama@bernardinai.lt">reklama@bernardinai.lt</a></div>
-        </div>
+        """
+        + gauti_reklamos_bloka("religija", "pdf")
+        + """
         <div class="back-to-toc"><a href="#turinys">↑ Grįžti į turinį</a></div>
     </div>
     """
+    )
 
 if kiti_straipsniai:
     html_kodas += """
@@ -564,20 +648,21 @@ if kiti_straipsniai:
         <div class="article-columns">
     """
     for i, straipsnis in enumerate(kiti_straipsniai):
-        html_kodas += f"""
+        html_kodas += (
+            f"""
             <div class="other-article" id="kitas_{i}">
                 <div class="other-article-top-block">
                     <div class="other-article-title">{straipsnis['title']}</div>
                     <div class="other-article-meta">Publikuota: {straipsnis['date']}</div>
                 </div>
                 {straipsnis['content']}
-                <div class="ad-box" style="margin-top: 25px;">
-                    <div class="ad-title">Čia galėtų būti Jūsų reklama</div>
-                    <div class="ad-contact">Kreipkitės: <a href="mailto:reklama@bernardinai.lt">reklama@bernardinai.lt</a></div>
-                </div>
+                """
+            + gauti_reklamos_bloka("religija", "pdf")
+            + """
                 <div class="back-to-toc"><a href="#turinys">↑ Grįžti į turinį</a></div>
             </div>
         """
+        )
     html_kodas += """
         </div>
     </div>
@@ -724,6 +809,7 @@ if api_key:
             </div>
             """
 
+    email_html += gauti_reklamos_bloka("religija", "email")
     email_html += f"""
         <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; font-size: 12px; color: #999;">
             © {current_year} VŠĮ BERNARDINAI.LT. Visos teisės saugomos.<br>
@@ -838,13 +924,10 @@ else:
         ">>> MAILERLITE_API_KEY nerastas aplinkoje. Juodraštis nekuriamas."
     )
 
-# --- Sukuriame įrašą su Bernardinai.lt ACF autoriumi ir nuotrauka ---
 wp_user = os.environ.get("WP_USERNAME")
 wp_pass = os.environ.get("WP_APP_PASSWORD")
-wp_category = int(
-    os.environ.get("WP_CATEGORY_ID_RELIGIJA", 65204)
-)  # Fiksuota religijos kategorija 65204
-wp_acf_author_id = 8149  # Fiksuotas „Bernardinai.lt“ ACF autoriaus ID
+wp_category = int(os.environ.get("WP_CATEGORY_ID_RELIGIJA", 65204))
+wp_acf_author_id = 8149
 
 if wp_user and wp_pass:
     print("Kuriamas informacinis įrašas Bernardinai.lt svetainėje...")
@@ -868,7 +951,6 @@ if wp_user and wp_pass:
         ),
     }
 
-    # 1. BANDOME ĮKELTI TITULINĘ NUOTRAUKĄ Į WORDPRESS MEDIA BIBLIOTEKĄ
     featured_media_id = None
     if cover_bg_image and cover_bg_image.startswith("http"):
         try:
@@ -892,7 +974,6 @@ if wp_user and wp_pass:
             with urllib.request.urlopen(img_req) as resp:
                 image_data = resp.read()
 
-            # Dinamiškai parenkame teisingą formatą (.webp / .png / .jpg), kad Wordfence neblokuotų
             ext = ".jpg"
             mime_type = "image/jpeg"
             url_lower = svara_img_url.lower()
@@ -934,7 +1015,6 @@ if wp_user and wp_pass:
                 f" {e}"
             )
 
-    # 2. SUFORMUOJAME TRUMPĄJĄ IŠTRAUKĄ (IKI 140 SP. Ž.) IR STRAIPSNIO TURINĮ
     trumpa_istrauka = (
         "Bernardinai.lt religijos naujienų ir tikėjimo savaitraštis Nr."
         f" {leidinio_numeris}. {leidinio_data} paruoštas svarbiausių tekstų"
