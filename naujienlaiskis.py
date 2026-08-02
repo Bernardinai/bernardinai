@@ -8,6 +8,7 @@ import re
 import sys
 import traceback
 import urllib.error
+import urllib.parse
 import urllib.request
 from weasyprint import HTML
 from zoneinfo import ZoneInfo
@@ -76,7 +77,6 @@ if is_real_run:
 else:
     leidinio_numeris = "Bandomasis"
 
-# --- Funkcijos ankstesnio numerio gavėjų skaičiui ir linksniui gauti ---
 api_key = os.environ.get("MAILERLITE_API_KEY")
 
 
@@ -116,7 +116,6 @@ def gauti_paskutines_kampanijos_gavejus(api_key):
     return None
 
 
-# Suformuojame ankstesnio numerio eilutę
 ankstesnio_nr_tekstas = ""
 if is_real_run and numeris > 1:
     ankstesnis_nr_str = f"{current_year}/{numeris - 1}"
@@ -140,7 +139,6 @@ elif not is_real_run:
             "Ankstesnis savaitraščio numeris buvo išsiųstas"
             f" {gaveju_sk} {linksnis}."
         )
-# -----------------------------------------------------------------------------
 
 logo_src = ""
 logo_failas = "logo.png"
@@ -148,6 +146,113 @@ if os.path.exists(logo_failas):
     with open(logo_failas, "rb") as image_file:
         encoded_string = base64.b64encode(image_file.read()).decode("utf-8")
         logo_src = f"data:image/png;base64,{encoded_string}"
+
+
+# --- Nuotraukų URL valymo funkcija (pašalina weserv.nl proxy) ---
+def isvalyti_img_url(url):
+    if not url:
+        return ""
+    if "images.weserv.nl" in url and "url=" in url:
+        match = re.search(r"url=([^&]+)", url)
+        if match:
+            url = urllib.parse.unquote(match.group(1))
+    url = url.replace("&#038;", "&")
+    if url and not url.startswith("http"):
+        url = "https://" + url.lstrip("/")
+    return url
+
+
+# --- AUTOMATINIS SAVAITRAŠČIŲ REKLAMŲ GAVIMAS IŠ WORDPRESS (ID: 65237) ---
+def gauti_reklamos_bloka(leidinio_tipas, formatas="pdf", wp_cat_id=65237):
+    today_str_reklama = datetime.datetime.now().strftime("%Y-%m-%d")
+    url = (
+        "https://www.bernardinai.lt/wp-json/wp/v2/posts?"
+        f"categories={wp_cat_id}&per_page=5&_embed"
+    )
+
+    aktyvi_reklama = None
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+                    " AppleWebKit/537.36 (KHTML, like Gecko)"
+                    " Chrome/122.0.0.0 Safari/537.36"
+                )
+            },
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            posts = json.loads(resp.read().decode("utf-8"))
+            for post in posts:
+                acf = post.get("acf", {})
+                leidinys = acf.get("leidinys", "")
+                nuo = acf.get("galioja_nuo", "")
+                iki = acf.get("galioja_iki", "")
+
+                tinka_leidinys = leidinys in [leidinio_tipas, "abi"]
+                galioja = nuo <= today_str_reklama <= iki
+
+                if tinka_leidinys and galioja:
+                    img_url = ""
+                    try:
+                        img_url = post["_embedded"]["wp:featuredmedia"][0][
+                            "source_url"
+                        ]
+                    except (KeyError, IndexError):
+                        pass
+
+                    if img_url:
+                        aktyvi_reklama = {
+                            "img": isvalyti_img_url(img_url),
+                            "link": acf.get("nuoroda", "#"),
+                            "title": post.get("title", {}).get(
+                                "rendered", "Reklama"
+                            ),
+                        }
+                        break
+    except Exception as e:
+        print(f"Nepavyko patikrinti reklamų iš WP (naudojamas standartas): {e}")
+
+    # 1. JEI RASTA AKTYVI REKLAMA – grąžiname reklaminį skydelį
+    if aktyvi_reklama:
+        img_src = aktyvi_reklama["img"]
+        link_url = aktyvi_reklama["link"]
+        title = aktyvi_reklama["title"]
+
+        if formatas == "pdf":
+            return f"""
+        <div class="ad-box" style="padding: 0; border: none; background: transparent; margin: 30px auto;">
+            <a href="{link_url}">
+                <img src="{img_src}" alt="{title}" style="width: 100%; max-width: 420px; height: auto; border-radius: 6px; display: block; margin: 0 auto;">
+            </a>
+        </div>
+            """
+        else:
+            return f"""
+        <div style="text-align: center; margin: 30px 0; padding: 15px 0; border-top: 1px solid #eee; border-bottom: 1px solid #eee;">
+            <a href="{link_url}" target="_blank" rel="noopener noreferrer">
+                <img src="{img_src}" alt="{title}" style="width: 100%; max-width: 600px; height: auto; border-radius: 6px; display: inline-block;">
+            </a>
+        </div>
+            """
+
+    # 2. JEI AKTYVIOS REKLAMOS NĖRA – rodome standartinį kvietimą
+    if formatas == "pdf":
+        return """
+        <div class="ad-box">
+            <div class="ad-title">Čia galėtų būti Jūsų reklama</div>
+            <div class="ad-contact">Kreipkitės: <a href="mailto:reklama@bernardinai.lt">reklama@bernardinai.lt</a></div>
+        </div>
+        """
+    else:
+        return """
+        <div style="margin: 30px auto; padding: 15px; background-color: #fcfcfc; border: 1px dashed #ccc; border-radius: 6px; text-align: center; max-width: 500px;">
+            <div style="font-size: 13px; font-weight: bold; color: #444; text-transform: uppercase; margin-bottom: 5px;">Čia galėtų būti Jūsų reklama</div>
+            <div style="font-size: 13px; color: #666;">Kreipkitės: <a href="mailto:reklama@bernardinai.lt" style="color: #7a2222; font-weight: bold; text-decoration: none;">reklama@bernardinai.lt</a></div>
+        </div>
+        """
+
 
 matyti_url = set()
 pagrindiniai_straipsniai = []
@@ -159,17 +264,16 @@ def apdoroti_straipsni(entry, is_main=True):
     if link in matyti_url:
         return None
 
-    # --- Neįtraukiame paties „Kultūros savaitraščio“ straipsnių ---
     title_lower = getattr(entry, "title", "").lower()
     if (
-        "kultūros savaitraštis" in title_lower
+        "kultūros naujienų" in title_lower
+        or "kultūros savaitraštis" in title_lower
         or "savaitraštis nr." in title_lower
     ):
         print(
             f"Praleidžiamas savaitraščio įrašas: {getattr(entry, 'title', '')}"
         )
         return None
-    # ----------------------------------------------------------------
 
     try:
         pub_date_obj = datetime.datetime(*entry.published_parsed[:6])
@@ -199,9 +303,42 @@ def apdoroti_straipsni(entry, is_main=True):
     )
 
     tituline_nuotrauka = ""
-    paveikslelis = re.search(r'<img[^>]+src="([^">]+)"', aprasymas)
-    if paveikslelis:
-        tituline_nuotrauka = paveikslelis.group(1)
+
+    if hasattr(entry, "media_content") and entry.media_content:
+        for media in entry.media_content:
+            if "url" in media:
+                tituline_nuotrauka = isvalyti_img_url(media["url"])
+                break
+
+    if (
+        not tituline_nuotrauka
+        and hasattr(entry, "enclosures")
+        and entry.enclosures
+    ):
+        for enc in entry.enclosures:
+            if enc.get("type", "").startswith("image/") or enc.get(
+                "href", ""
+            ).endswith((".jpg", ".jpeg", ".png", ".webp")):
+                tituline_nuotrauka = isvalyti_img_url(enc.get("href", ""))
+                break
+
+    if not tituline_nuotrauka:
+        paveikslelis = re.search(r'<img[^>]+src="([^">]+)"', aprasymas)
+        if paveikslelis:
+            tituline_nuotrauka = isvalyti_img_url(paveikslelis.group(1))
+
+    if (
+        not tituline_nuotrauka
+        and hasattr(entry, "content")
+        and len(entry.content) > 0
+    ):
+        paveikslelis_tekste = re.search(
+            r'<img[^>]+src="([^">]+)"', entry.content[0].value
+        )
+        if paveikslelis_tekste:
+            tituline_nuotrauka = isvalyti_img_url(
+                paveikslelis_tekste.group(1)
+            )
 
     pilnas_tekstas = (
         entry.content[0].value
@@ -271,11 +408,9 @@ def apdoroti_straipsni(entry, is_main=True):
     }
 
 
-print("Nuskaitomas pagrindinis RSS srautas...")
+print("Nuskaitomas pagrindinis RSS srautas (Kultūra)...")
 for puslapis in range(1, 10):
-    rss_url = (
-        f"https://www.bernardinai.lt/?feed=mailerlite-kultura&paged={puslapis}"
-    )
+    rss_url = f"https://www.bernardinai.lt/feed/mailerlite/?paged={puslapis}"
     feed = feedparser.parse(rss_url)
     if not feed.entries:
         break
@@ -287,8 +422,7 @@ for puslapis in range(1, 10):
 print("Nuskaitomas papildomas Kultūros RSS srautas...")
 for puslapis in range(1, 10):
     rss_url = (
-        "https://www.bernardinai.lt/kategorija/kultura/feed/?paged="
-        f"{puslapis}"
+        f"https://www.bernardinai.lt/feed/mailerlite-visi/?paged={puslapis}"
     )
     feed = feedparser.parse(rss_url)
     if not feed.entries:
@@ -334,17 +468,14 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     .cover-page {{ page: cover; position: relative; width: 210mm; height: 297mm; background-color: #1a1a1a; overflow: hidden; }}
     .bg-img {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }}
     .overlay {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(26, 26, 26, 0.70); z-index: 2; }}
-    .cover-content {{ position: absolute; top: 48%; left: 50%; transform: translate(-50%, -50%); text-align: center; width: 85%; color: white; z-index: 3; }}
-    .logo-container {{ background-color: rgba(255, 255, 255, 0.9); padding: 15px 30px; border-radius: 12px; display: inline-block; margin-bottom: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }}
+    .cover-content {{ position: absolute; top: 48%; left: 50%; transform: translate(-50%, -50%); text-align: center; width: 88%; color: white; z-index: 3; }}
+    .logo-container {{ background-color: rgba(255, 255, 255, 0.9); padding: 15px 30px; border-radius: 12px; display: inline-block; margin-bottom: 25px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }}
     .logo-main {{ max-width: 220px; display: block; }}
-    .main-title {{ font-size: 42pt; font-weight: bold; margin-bottom: 15px; letter-spacing: 2px; text-transform: uppercase; line-height: 1.1; }}
+    .main-title {{ font-size: 34pt; font-weight: bold; margin-bottom: 15px; letter-spacing: 1px; text-transform: uppercase; line-height: 1.15; }}
     .sub-title {{ font-size: 16pt; color: #E0E0E0; margin-bottom: 30px; font-style: italic; }}
     .divider {{ width: 80px; height: 3px; background-color: #d32f2f; margin: 0 auto 30px auto; }}
     .meta-box {{ display: inline-block; background-color: rgba(0,0,0,0.5); padding: 15px 30px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); }}
     .meta {{ font-size: 9.5pt; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.8; white-space: nowrap; }}
-    
-    .issn-box {{ position: absolute; bottom: 15mm; right: 15mm; background-color: rgba(0,0,0,0.5); padding: 10px 20px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); z-index: 10; color: white; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }}
-    .issn-text {{ font-size: 11pt; letter-spacing: 1px; font-weight: bold; }}
     
     .toc-page {{ page-break-before: always; page-break-after: always; padding-top: 10mm; }}
     .toc-title {{ text-align: center; font-size: 24pt; color: #7a2222; text-transform: uppercase; margin-bottom: 30px; margin-top: 20px; }}
@@ -441,7 +572,7 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
             <div class="logo-container">
                 {f'<img src="{logo_src}" class="logo-main">' if logo_src else '<div style="color:#111; font-size: 24pt; font-weight:bold;">Bernardinai.lt</div>'}
             </div>
-            <div class="main-title">Kultūros<br>Savaitraštis</div>
+            <div class="main-title">Kultūros naujienų ir<br>eseistikos savaitraštis</div>
             <div class="sub-title">Geriausi savaitės tekstai vienoje vietoje</div>
             <div class="divider"></div>
             <div class="meta-box">
@@ -451,10 +582,6 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
                     <strong>Laikotarpis:</strong> {savaites_laikotarpis}
                 </div>
             </div>
-        </div>
-        
-        <div class="issn-box">
-            <div class="issn-text">ISSN 3120-9696</div>
         </div>
     </div>
 
@@ -470,7 +597,7 @@ for i, straipsnis in enumerate(pagrindiniai_straipsniai):
 if kiti_straipsniai:
     html_kodas += """
         </ul>
-        <div class="toc-section-title">Kiti savaitės kultūros tekstai</div>
+        <div class="toc-section-title">Kiti savaitės kultūros ir eseistikos tekstai</div>
         <ul class="toc-list">
 """
     for i, straipsnis in enumerate(kiti_straipsniai):
@@ -488,7 +615,8 @@ html_kodas += f"""
 """
 
 for i, straipsnis in enumerate(pagrindiniai_straipsniai):
-    html_kodas += f"""
+    html_kodas += (
+        f"""
     <div class="article-page" id="pagrindinis_{i}">
         <div class="article-top-block">
             <div class="article-header">
@@ -500,36 +628,37 @@ for i, straipsnis in enumerate(pagrindiniai_straipsniai):
         <div class="article-columns">
             {straipsnis['content']}
         </div>
-        <div class="ad-box">
-            <div class="ad-title">Čia galėtų būti Jūsų reklama</div>
-            <div class="ad-contact">Kreipkitės: <a href="mailto:reklama@bernardinai.lt">reklama@bernardinai.lt</a></div>
-        </div>
+        """
+        + gauti_reklamos_bloka("kultura", "pdf")
+        + """
         <div class="back-to-toc"><a href="#turinys">↑ Grįžti į turinį</a></div>
     </div>
     """
+    )
 
 if kiti_straipsniai:
     html_kodas += """
     <div class="other-articles-section">
-        <div class="other-section-header">Kiti savaitės kultūros tekstai</div>
-        <div class="other-section-subtitle">Čia rasite Bernardinai.lt redaktorių ir žurnalistų atrinktas naujienų agentūrų BNS ir ELTA kultūros naujienas ir redakcijos gautus kitų autorių tekstus ir pranešimus spaudai apie kultūros įvykius.</div>
+        <div class="other-section-header">Kiti savaitės kultūros ir eseistikos tekstai</div>
+        <div class="other-section-subtitle">Čia rasite Bernardinai.lt redaktorių ir žurnalistų atrinktas svarbiausias savaitės kultūros naujienas, eseistiką bei knygų ir menų apžvalgas.</div>
         <div class="article-columns">
     """
     for i, straipsnis in enumerate(kiti_straipsniai):
-        html_kodas += f"""
+        html_kodas += (
+            f"""
             <div class="other-article" id="kitas_{i}">
                 <div class="other-article-top-block">
                     <div class="other-article-title">{straipsnis['title']}</div>
                     <div class="other-article-meta">Publikuota: {straipsnis['date']}</div>
                 </div>
                 {straipsnis['content']}
-                <div class="ad-box" style="margin-top: 25px;">
-                    <div class="ad-title">Čia galėtų būti Jūsų reklama</div>
-                    <div class="ad-contact">Kreipkitės: <a href="mailto:reklama@bernardinai.lt">reklama@bernardinai.lt</a></div>
-                </div>
+                """
+            + gauti_reklamos_bloka("kultura", "pdf")
+            + """
                 <div class="back-to-toc"><a href="#turinys">↑ Grįžti į turinį</a></div>
             </div>
         """
+        )
     html_kodas += """
         </div>
     </div>
@@ -540,8 +669,7 @@ html_kodas += f"""
         <h1 style="border-bottom: 2px solid #7a2222; padding-bottom: 10px; margin-bottom: 20px;">Redakcija ir kontaktai</h1>
         <div style="font-size: 11pt; line-height: 1.6; margin-bottom: 30px; text-align: left;">
             <strong>Interneto dienraštis „Bernardinai.lt“</strong><br>
-            Veiklos pradžia – 2004 m. vasario 21 d.<br>
-            <strong>ISSN 3120-9696</strong><br><br>
+            Veiklos pradžia – 2004 m. vasario 21 d.<br><br>
             <strong>Leidėjas:</strong> VŠĮ BERNARDINAI.LT (Bankams pradėjus tikrinti pavadinimus, prašome naudoti šį pavadinimą).<br>
             <strong>Įmonės kodas:</strong> 300671187<br>
             <strong>PVM mokėtojo kodas:</strong> LT100004414010<br>
@@ -635,15 +763,15 @@ if api_key:
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Kultūros savaitraštis</title>
+    <title>Kultūros naujienų ir eseistikos savaitraštis</title>
 </head>
 <body style="margin: 0; padding: 0; background-color: #f4f4f4;">
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 20px;">
         <div style="text-align: center; margin-bottom: 30px;">
             <img src="https://raw.githubusercontent.com/Bernardinai/bernardinai/main/logo.png" alt="Bernardinai.lt" style="max-width: 200px;">
         </div>
-        <h1 style="text-align: center; color: #111; font-size: 24px;">Naujausias Kultūros savaitraštis jau paruoštas!</h1>
-        <p style="text-align: center; color: #555; font-size: 16px;">Sveiki, paruošėme jums {leidinio_data} geriausių kultūros tekstų rinkinį žurnalo formatu.</p>
+        <h1 style="text-align: center; color: #111; font-size: 24px;">Naujausias Kultūros naujienų ir eseistikos savaitraštis jau paruoštas!</h1>
+        <p style="text-align: center; color: #555; font-size: 16px;">Sveiki, paruošėme jums {leidinio_data} geriausių kultūros ir eseistikos tekstų rinkinį žurnalo formatu.</p>
         
         <div style="text-align: center; margin: 40px 0;">
             <a href="{pdf_url}" style="background-color: #d32f2f; color: #ffffff; padding: 15px 30px; text-decoration: none; font-size: 18px; font-weight: bold; border-radius: 5px; display: inline-block;">Atsisiųsti PDF savaitraštį</a>
@@ -664,8 +792,8 @@ if api_key:
 
     if kiti_straipsniai:
         email_html += """
-        <h2 style="color: #7a2222; border-bottom: 2px solid #7a2222; padding-bottom: 10px; margin-top: 40px;">Kiti savaitės kultūros tekstai</h2>
-        <p style="color: #666; font-size: 13px; font-style: italic; margin-bottom: 20px;">Čia rasite Bernardinai.lt redaktorių ir žurnalistų atrinktas naujienų agentūrų BNS ir ELTA kultūros naujienas ir redakcijos gautus kitų autorių tekstus ir pranešimus spaudai apie kultūros įvykius.</p>
+        <h2 style="color: #7a2222; border-bottom: 2px solid #7a2222; padding-bottom: 10px; margin-top: 40px;">Kiti savaitės kultūros ir eseistikos tekstai</h2>
+        <p style="color: #666; font-size: 13px; font-style: italic; margin-bottom: 20px;">Čia rasite Bernardinai.lt redaktorių ir žurnalistų atrinktas svarbiausias savaitės kultūros naujienas, eseistiką bei knygų ir menų apžvalgas.</p>
         """
         for straipsnis in kiti_straipsniai:
             email_html += f"""
@@ -677,9 +805,9 @@ if api_key:
             </div>
             """
 
+    email_html += gauti_reklamos_bloka("kultura", "email")
     email_html += f"""
         <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; font-size: 12px; color: #999;">
-            <strong style="color: #444; font-size: 14px;">ISSN 3120-9696</strong><br><br>
             © {current_year} VŠĮ BERNARDINAI.LT. Visos teisės saugomos.<br>
             Išsiųsta naudojant Bernardinai.lt automatizaciją.<br><br>
             <a href="{{$url}}" style="color: #999; text-decoration: underline;">Peržiūrėti naršyklėje</a> &nbsp;|&nbsp; 
@@ -690,12 +818,18 @@ if api_key:
 </html>
 """
 
+    kultura_group_id = int(os.environ.get("MAILERLITE_GROUP_ID", 103032161))
     payload_campaign = {
         "type": "regular",
-        "groups": [103032162],
-        "subject": f"Kultūros savaitraštis | {leidinio_data}",
+        "groups": [kultura_group_id],
+        "subject": (
+            "Kultūros naujienų ir eseistikos savaitraštis |"
+            f" {leidinio_data}"
+        ),
         "from": "naujienlaiskis@bernardinai.lt",
-        "from_name": "Bernardinai.lt kultūros savaitraštis",
+        "from_name": (
+            "Bernardinai.lt kultūros naujienų ir eseistikos savaitraštis"
+        ),
         "language": "lt",
         "google_analytics": f"kulturos-savaitrastis-{today_str}",
     }
@@ -722,11 +856,10 @@ if api_key:
                 payload_content = {
                     "html": email_html,
                     "plain": (
-                        "Naujausias Kultūros savaitraštis jau"
-                        " paruoštas!\n\nAtsisiųsti PDF galite čia:"
-                        f" {pdf_url}\n\nISSN: 3120-9696\n\nPeržiūrėti"
-                        " naršyklėje: {$url}\nAtsisakyti naujienlaiškio:"
-                        " {$unsubscribe}"
+                        "Naujausias Kultūros naujienų ir eseistikos"
+                        " savaitraštis jau paruoštas!\n\nAtsisiųsti PDF galite"
+                        f" čia: {pdf_url}\n\nPeržiūrėti naršyklėje:"
+                        " {$url}\nAtsisakyti naujienlaiškio: {$unsubscribe}"
                     ),
                 }
 
@@ -788,13 +921,10 @@ else:
         ">>> MAILERLITE_API_KEY nerastas aplinkoje. Juodraštis nekuriamas."
     )
 
-# --- Sukuriame įrašą su Bernardinai.lt ACF autoriumi ir nuotrauka ---
 wp_user = os.environ.get("WP_USERNAME")
 wp_pass = os.environ.get("WP_APP_PASSWORD")
-wp_category = int(
-    os.environ.get("WP_CATEGORY_ID", 65160)
-)  # Fiksuota kategorija 65160
-wp_acf_author_id = 8149  # Fiksuotas „Bernardinai.lt“ ACF autoriaus ID
+wp_category = int(os.environ.get("WP_CATEGORY_ID", 18))
+wp_acf_author_id = 8149
 
 if wp_user and wp_pass:
     print("Kuriamas informacinis įrašas Bernardinai.lt svetainėje...")
@@ -812,32 +942,48 @@ if wp_user and wp_pass:
         "Authorization": basic_val,
         "X-HTTP-Authorization": basic_val,
         "REDIRECT_HTTP_AUTHORIZATION": basic_val,
-        "User-Agent": "Mozilla/5.0",
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            " (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        ),
     }
 
-    # 1. BANDOME ĮKELTI TITULINĘ NUOTRAUKĄ Į WORDPRESS MEDIA BIBLIOTEKĄ
     featured_media_id = None
     if cover_bg_image and cover_bg_image.startswith("http"):
         try:
-            svara_img_url = cover_bg_image
-            if "images.weserv.nl" in cover_bg_image and "url=" in cover_bg_image:
-                match_url = re.search(r"url=([^&]+)", cover_bg_image)
-                if match_url:
-                    svara_img_url = urllib.parse.unquote(match_url.group(1))
-                    if not svara_img_url.startswith("http"):
-                        svara_img_url = "https://" + svara_img_url
-                    svara_img_url = svara_img_url.replace("&#038;", "&")
+            svara_img_url = isvalyti_img_url(cover_bg_image)
+            if "bernardinai.lt/wp-content/uploads/" in svara_img_url:
+                svara_img_url = svara_img_url.split("?")[0]
 
             print(f"Atsisiunčiama viršelio nuotrauka iš: {svara_img_url}")
+
             img_req = urllib.request.Request(
-                svara_img_url, headers={"User-Agent": "Mozilla/5.0"}
+                svara_img_url,
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+                        " AppleWebKit/537.36 (KHTML, like Gecko)"
+                        " Chrome/122.0.0.0 Safari/537.36"
+                    ),
+                    "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+                },
             )
             with urllib.request.urlopen(img_req) as resp:
                 image_data = resp.read()
 
-            failo_varda = f"kulturos_savaitrastis_cover_{today_str}.jpg"
+            ext = ".jpg"
+            mime_type = "image/jpeg"
+            url_lower = svara_img_url.lower()
+            if ".webp" in url_lower:
+                ext = ".webp"
+                mime_type = "image/webp"
+            elif ".png" in url_lower:
+                ext = ".png"
+                mime_type = "image/png"
+
+            failo_varda = f"kulturos_savaitrastis_cover_{today_str}{ext}"
             media_headers = wp_headers.copy()
-            media_headers["Content-Type"] = "image/jpeg"
+            media_headers["Content-Type"] = mime_type
             media_headers["Content-Disposition"] = (
                 f'attachment; filename="{failo_varda}"'
             )
@@ -866,35 +1012,34 @@ if wp_user and wp_pass:
                 f" {e}"
             )
 
-    # 2. SUFORMUOJAME TRUMPĄJĄ IŠTRAUKĄ (IKI 140 SP. Ž.) IR STRAIPSNIO TURINĮ
     trumpa_istrauka = (
-        f"Bernardinai.lt kultūros savaitraštis Nr. {leidinio_numeris}."
-        f" {leidinio_data} paruoštas geriausių savaitės tekstų PDF rinkinys."
+        "Bernardinai.lt kultūros naujienų ir eseistikos savaitraštis Nr."
+        f" {leidinio_numeris}. {leidinio_data} paruoštas svarbiausių tekstų"
+        " PDF rinkinys."
     )[:140]
 
     irasas_pavadinimas = (
-        f"Kultūros savaitraštis Nr. {leidinio_numeris} | {leidinio_data}"
+        "Kultūros naujienų ir eseistikos savaitraštis Nr."
+        f" {leidinio_numeris} | {leidinio_data}"
     )
 
-    wp_html_turinys = f"""<p>Skaitytojams pateikiame interneto dienraščio „Bernardinai.lt“ Kultūros savaitraščio numerį ({leidinio_data}, Nr. {leidinio_numeris}). Šiame leidinyje rasite redaktorių atrinktus svarbiausius savaitės kultūros tekstus, interviu, esė bei recenzijas, paruoštas patogiam skaitymui žurnalo formatu.</p>
+    wp_html_turinys = f"""<p>Skaitytojams pateikiame interneto dienraščio „Bernardinai.lt“ Kultūros naujienų ir eseistikos savaitraščio numerį ({leidinio_data}, Nr. {leidinio_numeris}). Šiame leidinyje rasite redaktorių atrinktus svarbiausius savaitės kultūros, eseistikos bei menų tekstus ir pokalbius, paruoštus patogiam skaitymui žurnalo formatu.</p>
 <p style="margin: 30px 0; text-align: center;">
     <a href="{pdf_url}" target="_blank" rel="noopener noreferrer" style="background-color: #d32f2f; color: #ffffff; padding: 14px 28px; text-decoration: none; font-weight: bold; border-radius: 5px; display: inline-block; font-size: 16px;">
         Atsisiųsti PDF savaitraštį
     </a>
 </p>
-<p><em>Autorius: Bernardinai.lt | ISSN 3120-9696</em></p>"""
+<p><em>Autorius: Bernardinai.lt</em></p>"""
 
     payload_wp = {
         "title": irasas_pavadinimas,
         "content": wp_html_turinys,
         "excerpt": trumpa_istrauka,
         "status": "publish" if is_real_run else "draft",
-        "categories": [wp_category],  # Fiksuotai 65160
+        "categories": [wp_category],
         "acf": {
             "short_description": trumpa_istrauka,
-            "author": [
-                wp_acf_author_id
-            ],  # Priskiriame 8149 jūsų ACF ryšio laukui
+            "author": [wp_acf_author_id],
         },
     }
 
