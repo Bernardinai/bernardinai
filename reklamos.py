@@ -9,10 +9,11 @@ import os
 # "nuo" / "iki": data YYYY-MM-DD formatu (jei tuščia "", galioja visada)
 # "failas": paveikslėlio failo pavadinimas esantis folderyje /reklamos/
 REKLAMOS_SARASAS = [
+    # 1 REKLAMA: MoreMins
     {
         "leidinys": "abi",
         "nuo": "2026-08-01",
-        "iki": "2026-08-31",
+        "iki": "",
         "failas": "parama_test.jpg",
         "link": "https://www.bernardinai.lt/parama",
         "title": "Parama Bernardinams",
