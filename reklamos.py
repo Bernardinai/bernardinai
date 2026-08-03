@@ -8,10 +8,11 @@ import urllib.request
 # "leidinys": "religija", "kultura" arba "abi"
 # "nuo" / "iki": data YYYY-MM-DD formatu (jei tuščia "", galioja visada)
 REKLAMOS_SARASAS = [
+    # 1 REKLAMA: Rodyti abiejuose leidiniuose, be pabaigos datos (galioja visada)
     {
         "leidinys": "abi",
         "nuo": "2026-08-01",
-        "iki": "2026-08-31",
+        "iki": "",
         "img": "https://raw.githubusercontent.com/Bernardinai/bernardinai/main/reklama_test.jpg",
         "link": "https://www.bernardinai.lt/parama",
         "title": "Parama Bernardinams",
