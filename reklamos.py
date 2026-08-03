@@ -16,7 +16,7 @@ REKLAMOS_SARASAS = [
         "iki": "",
         "failas": "moremins-esim.png",
         "link": "https://www.moremins.com/lt/app/login?ref=y2njoty&setCoupon=BERNARDINAI&partner=bernardinai",
-        "title": "Keliaudami naudokitės pigesniais mobiliasiais duomenimis su MoreMins Ir Bernardinai.lt!",
+        "title": "Keliaudami naudokitės pigesniais mobiliasiais duomenimis su MoreMins ir Bernardinai.lt!",
     },
     # Pavyzdys kitai reklamai:
     # {
