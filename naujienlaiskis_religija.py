@@ -162,159 +162,30 @@ def isvalyti_img_url(url):
     return url
 
 
-# --- 1. VIENĄ KARTĄ ATSISIUNČIAME VISAS GALIOJANČIAS REKLAMAS IŠ WORDPRESS ---
-def gauti_aktyvias_reklamas(leidinio_tipas, wp_cat_id=65237):
-    today_str_reklama = datetime.datetime.now().strftime("%Y-%m-%d")
-    url = (
-        "https://www.bernardinai.lt/wp-json/wp/v2/posts?"
-        f"categories={wp_cat_id}&per_page=20&_embed"
+# --- SAUGUS REKLAMŲ MODULIO ĮKĖLIMAS ---
+try:
+    from reklamos import gauti_reklamos_bloka
+except Exception as e:
+    print(
+        f"Nepavyko užkrauti reklamos modulio ({e}). Naudojamas standartinis"
+        " blokas."
     )
 
-    tinkamos_reklamos = []
-    try:
-        req = urllib.request.Request(
-            url,
-            headers={
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-                    " AppleWebKit/537.36 (KHTML, like Gecko)"
-                    " Chrome/122.0.0.0 Safari/537.36"
-                )
-            },
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            posts = json.loads(resp.read().decode("utf-8"))
-            for post in posts:
-                acf = post.get("acf", {})
-
-                # Saugus Leidinio laukelio tikrinimas (supranta sąrašus ir tekstą)
-                leidinys_data = acf.get("leidinys", "")
-                if isinstance(leidinys_data, list):
-                    leidinys_val = [
-                        str(x).lower().strip() for x in leidinys_data
-                    ]
-                    tinka_leidinys = any(
-                        x in [leidinio_tipas.lower(), "abi"]
-                        for x in leidinys_val
-                    )
-                else:
-                    leidinys_val = str(leidinys_data).lower().strip()
-                    tinka_leidinys = leidinys_val in [
-                        leidinio_tipas.lower(),
-                        "abi",
-                    ]
-
-                # Saugus datų tikrinimas
-                nuo = str(acf.get("galioja_nuo", "")).strip()
-                iki = str(acf.get("galioja_iki", "")).strip()
-                galioja = (not nuo or nuo <= today_str_reklama) and (
-                    not iki or today_str_reklama <= iki
-                )
-
-                if tinka_leidinys and galioja:
-                    img_url = ""
-                    try:
-                        img_url = post["_embedded"]["wp:featuredmedia"][0][
-                            "source_url"
-                        ]
-                    except (KeyError, IndexError):
-                        pass
-
-                    if img_url:
-                        img_clean = isvalyti_img_url(img_url)
-
-                        # KONVERTUOJAME Į BASE64 PDF FAILIUI (100% apsauga nuo Wordfence blokuotės)
-                        img_pdf_src = img_clean
-                        try:
-                            img_req = urllib.request.Request(
-                                img_clean,
-                                headers={
-                                    "User-Agent": (
-                                        "Mozilla/5.0 (Windows NT 10.0; Win64;"
-                                        " x64) AppleWebKit/537.36 (KHTML, like"
-                                        " Gecko) Chrome/122.0.0.0"
-                                        " Safari/537.36"
-                                    ),
-                                    "Accept": "image/*,*/*;q=0.8",
-                                },
-                            )
-                            with urllib.request.urlopen(
-                                img_req, timeout=10
-                            ) as i_resp:
-                                i_data = i_resp.read()
-                                c_type = (
-                                    i_resp.headers.get_content_type()
-                                    or "image/jpeg"
-                                )
-                                b64_str = base64.b64encode(i_data).decode(
-                                    "utf-8"
-                                )
-                                img_pdf_src = f"data:{c_type};base64,{b64_str}"
-                        except Exception as ex:
-                            print(
-                                "Nepavyko konvertuoti reklamos paveikslėlio į"
-                                f" base64: {ex}"
-                            )
-
-                        tinkamos_reklamos.append(
-                            {
-                                "img_pdf": img_pdf_src,
-                                "img_email": img_clean,
-                                "link": acf.get("nuoroda", "#"),
-                                "title": post.get("title", {}).get(
-                                    "rendered", "Reklama"
-                                ),
-                            }
-                        )
-    except Exception as e:
-        print(f"Nepavyko gauti reklamų sąrašo iš WP: {e}")
-
-    return tinkamos_reklamos
-
-
-# --- 2. GENERUOJAME REKLAMOS HTML ROTACIJOS PRINCIPU PAGAL INDEKSĄ ---
-def generuoti_reklamos_html(reklamos_sarasas, vieta_idx, formatas="pdf"):
-    if reklamos_sarasas and len(reklamos_sarasas) > 0:
-        parinkta = reklamos_sarasas[vieta_idx % len(reklamos_sarasas)]
-        img_src = (
-            parinkta["img_pdf"]
-            if formatas == "pdf"
-            else parinkta["img_email"]
-        )
-        link_url = parinkta["link"]
-        title = parinkta["title"]
-
+    def gauti_reklamos_bloka(leidinys, vieta_idx=0, formatas="pdf"):
         if formatas == "pdf":
-            return f"""
-        <div class="ad-box" style="padding: 0; border: none; background: transparent; margin: 30px auto;">
-            <a href="{link_url}">
-                <img src="{img_src}" alt="{title}" style="width: 100%; max-width: 420px; height: auto; border-radius: 6px; display: block; margin: 0 auto;">
-            </a>
-        </div>
+            return """
+            <div class="ad-box">
+                <div class="ad-title">Čia galėtų būti Jūsų reklama</div>
+                <div class="ad-contact">Kreipkitės: <a href="mailto:reklama@bernardinai.lt">reklama@bernardinai.lt</a></div>
+            </div>
             """
         else:
-            return f"""
-        <div style="text-align: center; margin: 30px 0; padding: 15px 0; border-top: 1px solid #eee; border-bottom: 1px solid #eee;">
-            <a href="{link_url}" target="_blank" rel="noopener noreferrer">
-                <img src="{img_src}" alt="{title}" style="width: 100%; max-width: 600px; height: auto; border-radius: 6px; display: inline-block;">
-            </a>
-        </div>
+            return """
+            <div style="margin: 30px auto; padding: 15px; background-color: #fcfcfc; border: 1px dashed #ccc; border-radius: 6px; text-align: center; max-width: 500px;">
+                <div style="font-size: 13px; font-weight: bold; color: #444; text-transform: uppercase; margin-bottom: 5px;">Čia galėtų būti Jūsų reklama</div>
+                <div style="font-size: 13px; color: #666;">Kreipkitės: <a href="mailto:reklama@bernardinai.lt" style="color: #7a2222; font-weight: bold; text-decoration: none;">reklama@bernardinai.lt</a></div>
+            </div>
             """
-
-    if formatas == "pdf":
-        return """
-        <div class="ad-box">
-            <div class="ad-title">Čia galėtų būti Jūsų reklama</div>
-            <div class="ad-contact">Kreipkitės: <a href="mailto:reklama@bernardinai.lt">reklama@bernardinai.lt</a></div>
-        </div>
-        """
-    else:
-        return """
-        <div style="margin: 30px auto; padding: 15px; background-color: #fcfcfc; border: 1px dashed #ccc; border-radius: 6px; text-align: center; max-width: 500px;">
-            <div style="font-size: 13px; font-weight: bold; color: #444; text-transform: uppercase; margin-bottom: 5px;">Čia galėtų būti Jūsų reklama</div>
-            <div style="font-size: 13px; color: #666;">Kreipkitės: <a href="mailto:reklama@bernardinai.lt" style="color: #7a2222; font-weight: bold; text-decoration: none;">reklama@bernardinai.lt</a></div>
-        </div>
-        """
 
 
 matyti_url = set()
