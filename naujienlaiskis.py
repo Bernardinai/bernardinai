@@ -162,7 +162,7 @@ def isvalyti_img_url(url):
     return url
 
 
-# --- SAUGUS REKLAMŲ MODULIO ĮKĖLIMAS ---
+# --- SAUGUS REKLAMŲ MODULIO ĮKĖLIMAS IŠ ATSIKRO FAILO reklamos.py ---
 try:
     from reklamos import gauti_reklamos_bloka
 except Exception as e:
@@ -199,8 +199,13 @@ def apdoroti_straipsni(entry, is_main=True):
         return None
 
     title_lower = getattr(entry, "title", "").lower()
-    if "kultūros savaitraštis" in title_lower or "savaitraštis nr." in title_lower:
-        print(f"Praleidžiamas savaitraščio įrašas: {getattr(entry, 'title', '')}")
+    if (
+        "kultūros savaitraštis" in title_lower
+        or "savaitraštis nr." in title_lower
+    ):
+        print(
+            f"Praleidžiamas savaitraščio įrašas: {getattr(entry, 'title', '')}"
+        )
         return None
 
     try:
@@ -336,7 +341,7 @@ def apdoroti_straipsni(entry, is_main=True):
     }
 
 
-# --- SUGRAŽINTI TIKRI KULTŪROS RSS SRAUTAI ---
+# --- KULTŪROS RSS SRAUTAI ---
 print("Nuskaitomas pagrindinis RSS srautas (Kultūra)...")
 for puslapis in range(1, 10):
     rss_url = (
@@ -385,8 +390,7 @@ if not cover_bg_image:
             cover_bg_image = straipsnis["image"]
             break
 
-# Atsisiunčiame aktyvių reklamų sąrašą kartą per siuntimą (WP kategorija ID: 65237)
-aktyvios_reklamos = gauti_aktyvias_reklamas("kultura", 65237)
+# REKLAMŲ INDEKSAS KARUSELEI
 reklamos_indeksas = 0
 
 html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
@@ -566,7 +570,7 @@ for i, straipsnis in enumerate(pagrindiniai_straipsniai):
             {straipsnis['content']}
         </div>
         """
-        + generuoti_reklamos_html(aktyvios_reklamos, reklamos_indeksas, "pdf")
+        + gauti_reklamos_bloka("kultura", reklamos_indeksas, "pdf")
         + """
         <div class="back-to-toc"><a href="#turinys">↑ Grįžti į turinį</a></div>
     </div>
@@ -591,9 +595,7 @@ if kiti_straipsniai:
                 </div>
                 {straipsnis['content']}
                 """
-            + generuoti_reklamos_html(
-                aktyvios_reklamos, reklamos_indeksas, "pdf"
-            )
+            + gauti_reklamos_bloka("kultura", reklamos_indeksas, "pdf")
             + """
                 <div class="back-to-toc"><a href="#turinys">↑ Grįžti į turinį</a></div>
             </div>
@@ -746,9 +748,7 @@ if api_key:
             </div>
             """
 
-    email_html += generuoti_reklamos_html(
-        aktyvios_reklamos, reklamos_indeksas, "email"
-    )
+    email_html += gauti_reklamos_bloka("kultura", reklamos_indeksas, "email")
     reklamos_indeksas += 1
     email_html += f"""
         <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; font-size: 12px; color: #999;">
