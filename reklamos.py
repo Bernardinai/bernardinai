@@ -18,6 +18,24 @@ REKLAMOS_SARASAS = [
         "link": "https://www.moremins.com/lt/app/login?ref=y2njoty&setCoupon=BERNARDINAI&partner=bernardinai",
         "title": "Keliaudami naudokitės pigesniais mobiliasiais duomenimis su MoreMins ir Bernardinai.lt!",
     },
+    # 2 REKLAMA: Kelionė
+    {
+        "leidinys": "abi",
+        "nuo": "2026-08-01",
+        "iki": "2026-09-30",
+        "failas": "kelione.jpg",
+        "link": "https://www.zurnalaskelione.lt/prenumerata/",
+        "title": "Skaitykite žurnalą „Kelionė“!",
+    },
+    # 3 REKLAMA: Artuma
+    {
+        "leidinys": "religija",
+        "nuo": "2026-08-01",
+        "iki": "2026-08-31",
+        "failas": "artuma202607-8.gif",
+        "link": "https://artuma.lt/",
+        "title": "Skaitykite žurnalą „Artuma“!",
+    },
     # Pavyzdys kitai reklamai:
     # {
     #     "leidinys": "kultura",
