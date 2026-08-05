@@ -29,7 +29,7 @@ def generate_audio(text, output_filename):
     try:
         with open("temp_text.txt", "w", encoding="utf-8") as f:
             f.write(text)
-        os.system(f'edge-tts --voice lt-LT-OnaNeural -f temp_text.txt --write-media {output_filename}')
+        os.system(f'edge-tts --voice lt-LT-LeonasNeural -f temp_text.txt --write-media {output_filename}')
         return os.path.exists(output_filename)
     except:
         return False
