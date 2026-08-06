@@ -40,13 +40,13 @@ def generate_audio(text, output_filename, title="Bernardinai Reels"):
         "Content-Type": "application/json",
     }
 
-    # Siunčiame TIK turinį ir balsą (be fondo kategorijos, kaip pasirinkus "Įgarsinti turinį")
+    # 1. Siunčiame užklausą sukurti įrašą ir pradėti audio sintezę
     payload = {
         "title": title[:250],
         "content": text,
         "type": "text",
-        "status": "draft",
-        "voice": "vytautas",  # Balsai: "astra", "laimis", "lina", "vytautas"
+        "status": "waiting",  # "waiting" statusas dokumentacijoje rekomenduojamas TTS eilėj
+        "voice": "vytautas",  # Galimi: "astra", "laimis", "lina", "vytautas"
         "speed": 1.0,
     }
 
@@ -62,10 +62,9 @@ def generate_audio(text, output_filename, title="Bernardinai Reels"):
             timeout=30,
         )
 
-        # JEI SERVERIS ATMESTŲ BE CATEGORY_ID (pvz. grąžintų 422),
-        # automatiškai pridedame tuščią / bendrą reikšmę ir bandome dar kartą:
+        # Jei serveris reikalauja category_id (422 klaida), pridedame bendrą ID:
         if response.status_code == 422:
-            payload["category_id"] = 1  # Bendras techninis ID (ne fondo sąraše)
+            payload["category_id"] = 1
             response = requests.post(
                 "http://www.mrftb.lt/api/articles",
                 json=payload,
@@ -82,24 +81,61 @@ def generate_audio(text, output_filename, title="Bernardinai Reels"):
             print(f"!!! Nesėkmingas atsakymas iš API: {data}")
             return False
 
-        # Pasiimame sugeneruoto MP3 nuorodą
         article_data = data.get("data", {})
         article_id = article_data.get("id")
+
+        # 2. PATIKRINIMO CIKLAS: kas 3 sek. tikriname, ar audio failas jau pagamintas
         audio_url = article_data.get("audio") or data.get("synthesis", {}).get(
             "audio_url"
         )
 
+        max_retries = 15  # Maksimaliai lauksime iki 45 sekundžių
+        retry_count = 0
+
+        while not audio_url and retry_count < max_retries:
+            retry_count += 1
+            print(
+                f"Audio dar generuojamas... Laukia ({retry_count}/{max_retries})"
+                " - tikrinsime vėl po 3 sek."
+            )
+            time.sleep(3)
+
+            if not article_id:
+                break
+
+            get_resp = requests.get(
+                f"http://www.mrftb.lt/api/articles/{article_id}",
+                headers=headers,
+                timeout=15,
+            )
+            if get_resp.status_code == 200:
+                get_data = get_resp.json().get("data", {})
+                audio_url = get_data.get("audio")
+
         if not audio_url:
-            print("!!! API negrąžino audio nuorodos.")
+            print(
+                "!!! KLAIDA: Per skirtą laiką API nespėjo sugeneruoti audio"
+                " nuorodos."
+            )
+            if article_id:
+                try:
+                    requests.delete(
+                        f"http://www.mrftb.lt/api/articles/{article_id}",
+                        headers=headers,
+                        timeout=10,
+                    )
+                except Exception:
+                    pass
             return False
 
+        # 3. Atsisiunčiame paruoštą MP3 failą
         print(f"Atsisiunčiamas sugeneruotas audio failas iš: {audio_url}")
         audio_resp = requests.get(audio_url, timeout=30)
         if audio_resp.status_code == 200:
             with open(output_filename, "wb") as f:
                 f.write(audio_resp.content)
 
-            # ŠVARA: ištriname laikiną įrašą iš sistemos po generavimo
+            # 4. ŠVARA: ištriname laikiną juodraštį po panaudojimo
             if article_id:
                 try:
                     requests.delete(
