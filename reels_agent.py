@@ -25,13 +25,102 @@ MAX_ARTICLES = 4
 FONT_TITLE_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 FONT_SUB_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
-def generate_audio(text, output_filename):
+import os
+import requests
+
+
+def generate_audio(text, output_filename, title="Bernardinai Reels"):
+    api_key = os.environ.get("MRFTB_API_KEY")
+    if not api_key:
+        print("!!! KLAIDA: Nerastas MRFTB_API_KEY aplinkos kintamasis.")
+        return False
+
+    headers = {
+        "Authorization": f"Key {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    # Siunčiame TIK turinį ir balsą (be fondo kategorijos, kaip pasirinkus "Įgarsinti turinį")
+    payload = {
+        "title": title[:250],
+        "content": text,
+        "type": "text",
+        "status": "draft",
+        "voice": "vytautas",  # Balsai: "astra", "laimis", "lina", "vytautas"
+        "speed": 1.0,
+    }
+
     try:
-        with open("temp_text.txt", "w", encoding="utf-8") as f:
-            f.write(text)
-        os.system(f'edge-tts --voice lt-LT-OnaNeural -f temp_text.txt --write-media {output_filename}')
-        return os.path.exists(output_filename)
-    except:
+        print(
+            f"Siunčiamas tekstas į MRFTB audio sintezę (balsas:"
+            f" {payload['voice']})..."
+        )
+        response = requests.post(
+            "http://www.mrftb.lt/api/articles",
+            json=payload,
+            headers=headers,
+            timeout=30,
+        )
+
+        # JEI SERVERIS ATMESTŲ BE CATEGORY_ID (pvz. grąžintų 422),
+        # automatiškai pridedame tuščią / bendrą reikšmę ir bandome dar kartą:
+        if response.status_code == 422:
+            payload["category_id"] = 1  # Bendras techninis ID (ne fondo sąraše)
+            response = requests.post(
+                "http://www.mrftb.lt/api/articles",
+                json=payload,
+                headers=headers,
+                timeout=30,
+            )
+
+        if response.status_code not in [200, 201]:
+            print(f"!!! API Klaida ({response.status_code}): {response.text}")
+            return False
+
+        data = response.json()
+        if not data.get("success"):
+            print(f"!!! Nesėkmingas atsakymas iš API: {data}")
+            return False
+
+        # Pasiimame sugeneruoto MP3 nuorodą
+        article_data = data.get("data", {})
+        article_id = article_data.get("id")
+        audio_url = article_data.get("audio") or data.get("synthesis", {}).get(
+            "audio_url"
+        )
+
+        if not audio_url:
+            print("!!! API negrąžino audio nuorodos.")
+            return False
+
+        print(f"Atsisiunčiamas sugeneruotas audio failas iš: {audio_url}")
+        audio_resp = requests.get(audio_url, timeout=30)
+        if audio_resp.status_code == 200:
+            with open(output_filename, "wb") as f:
+                f.write(audio_resp.content)
+
+            # ŠVARA: ištriname laikiną įrašą iš sistemos po generavimo
+            if article_id:
+                try:
+                    requests.delete(
+                        f"http://www.mrftb.lt/api/articles/{article_id}",
+                        headers=headers,
+                        timeout=10,
+                    )
+                    print(f"Laikinas įrašas (ID: {article_id}) ištrintas.")
+                except Exception:
+                    pass
+
+            return os.path.exists(output_filename)
+        else:
+            print(
+                "!!! Nepavyko atsisiųsti audio failo"
+                f" ({audio_resp.status_code})"
+            )
+            return False
+
+    except Exception as e:
+        print(f"!!! Klaida generuojant MRFTB garsą: {e}")
         return False
 
 def wrap_text(text, font, max_width, draw):
