@@ -520,7 +520,8 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
                 <div class="meta">
                     <strong>Leidinio data:</strong> {leidinio_data}<br>
                     <strong>Numeris:</strong> {leidinio_numeris}<br>
-                    <strong>Laikotarpis:</strong> {savaites_laikotarpis}
+                    <strong>Laikotarpis:</strong> {savaites_laikotarpis}<br>
+                    ISSN 3120-9742
                 </div>
             </div>
         </div>
@@ -613,6 +614,7 @@ html_kodas += f"""
         <div style="font-size: 11pt; line-height: 1.6; margin-bottom: 30px; text-align: left;">
             <strong>Interneto dienraštis „Bernardinai.lt“</strong><br>
             Veiklos pradžia – 2004 m. vasario 21 d.<br><br>
+            ISSN 3120-9742<br><br>
             <strong>Leidėjas:</strong> VŠĮ BERNARDINAI.LT (Bankams pradėjus tikrinti pavadinimus, prašome naudoti šį pavadinimą).<br>
             <strong>Įmonės kodas:</strong> 300671187<br>
             <strong>PVM mokėtojo kodas:</strong> LT100004414010<br>
@@ -752,6 +754,7 @@ if api_key:
     reklamos_indeksas += 1
     email_html += f"""
         <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; font-size: 12px; color: #999;">
+            ISSN 3120-9742<br>
             © {current_year} VŠĮ BERNARDINAI.LT. Visos teisės saugomos.<br>
             Išsiųsta naudojant Bernardinai.lt automatizaciją.<br><br>
             <a href="{{$url}}" style="color: #999; text-decoration: underline;">Peržiūrėti naršyklėje</a> &nbsp;|&nbsp; 
