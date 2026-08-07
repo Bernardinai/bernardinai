@@ -29,7 +29,7 @@ LOGO_FILE = "logo.png"
 BG_MUSIC_FILE = "bg_music.mp3"
 AI_LABEL_FILE = "LABEL_AI_black transparent 1.png"
 MAX_ARTICLES = 4
-SLIDE_DURATION = 4.5  # Fiksuota vienos skaidrės trukmė sekundėmis
+SLIDE_DURATION = 7.0  # Fiksuota vienos skaidrės trukmė sekundėmis
 
 FONT_TITLE_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 FONT_SUB_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
