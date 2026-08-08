@@ -393,13 +393,16 @@ if not cover_bg_image:
 # REKLAMŲ INDEKSAS KARUSELEI
 reklamos_indeksas = 0
 
+# TEMINĖ LEIDINIO SPALVA (Vyšninė / Burgundo)
+THEME_COLOR = "#7a2222"
+
 html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
 <style>
     @page {{
         size: A4;
         margin: 20mm 15mm 20mm 15mm;
         @bottom-center {{
-            content: counter(page); font-family: 'Georgia', serif; font-size: 11pt; color: #7a2222;
+            content: counter(page); font-family: 'Georgia', serif; font-size: 11pt; color: {THEME_COLOR};
         }}
     }}
     @page cover {{ margin: 0; @bottom-center {{ content: none; }} }}
@@ -414,21 +417,21 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     .logo-main {{ max-width: 220px; display: block; }}
     .main-title {{ font-size: 38pt; font-weight: bold; margin-bottom: 15px; letter-spacing: 1px; text-transform: uppercase; line-height: 1.15; }}
     .sub-title {{ font-size: 16pt; color: #E0E0E0; margin-bottom: 30px; font-style: italic; }}
-    .divider {{ width: 80px; height: 3px; background-color: #d32f2f; margin: 0 auto 30px auto; }}
-    .meta-box {{ display: inline-block; background-color: rgba(0,0,0,0.5); padding: 15px 30px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); }}
+    .divider {{ width: 80px; height: 4px; background-color: {THEME_COLOR}; margin: 0 auto 30px auto; border-radius: 2px; }}
+    .meta-box {{ display: inline-block; background-color: rgba(0,0,0,0.55); padding: 15px 30px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); border-left: 5px solid {THEME_COLOR}; }}
     .meta {{ font-size: 9.5pt; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.8; white-space: nowrap; }}
     
     .toc-page {{ page-break-before: always; page-break-after: always; padding-top: 10mm; }}
-    .toc-title {{ text-align: center; font-size: 24pt; color: #7a2222; text-transform: uppercase; margin-bottom: 30px; margin-top: 20px; }}
+    .toc-title {{ text-align: center; font-size: 24pt; color: {THEME_COLOR}; text-transform: uppercase; margin-bottom: 30px; margin-top: 20px; }}
     .toc-list {{ list-style: none; padding: 0; margin: 0; }}
     .toc-item {{ border-bottom: 1px dotted #ccc; margin-bottom: 15px; padding-bottom: 5px; overflow: hidden; }}
     .toc-link {{ text-decoration: none; color: #222; display: block; }}
-    .toc-section-title {{ font-size: 14pt; color: #7a2222; font-weight: bold; text-transform: uppercase; margin-top: 30px; margin-bottom: 15px; border-bottom: 2px solid #7a2222; padding-bottom: 5px; }}
+    .toc-section-title {{ font-size: 14pt; color: {THEME_COLOR}; font-weight: bold; text-transform: uppercase; margin-top: 30px; margin-bottom: 15px; border-bottom: 2px solid {THEME_COLOR}; padding-bottom: 5px; }}
     .intro-box {{ background-color: #f9f9f9; padding: 30px; border-radius: 8px; border: 1px solid #eaeaea; margin: 35px auto 30px auto; max-width: 500px; text-align: center; }}
-    .btn-support {{ display: inline-block; background-color: #d32f2f; color: #FFF; padding: 10px 20px; text-decoration: none; font-weight: bold; border-radius: 4px; margin-top: 15px; }}
+    .btn-support {{ display: inline-block; background-color: {THEME_COLOR}; color: #FFF; padding: 10px 20px; text-decoration: none; font-weight: bold; border-radius: 4px; margin-top: 15px; }}
     
     .article-columns {{ column-count: 2; column-gap: 30px; text-align: justify; }}
-    .drop-cap {{ font-size: 350%; float: left; margin: 4px 8px 0 0; color: #7a2222; line-height: 0.8; font-weight: bold; }}
+    .drop-cap {{ font-size: 350%; float: left; margin: 4px 8px 0 0; color: {THEME_COLOR}; line-height: 0.8; font-weight: bold; }}
     .article-columns p {{ margin-top: 0; margin-bottom: 15px; widows: 2; orphans: 2; }}
     
     .article-page {{
@@ -454,7 +457,7 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     .article-image {{ width: 100%; max-height: 400px; object-fit: cover; margin-top: 15px; border-radius: 4px; }}
     
     .other-articles-section {{ page-break-before: always; padding-top: 10mm; }}
-    .other-section-header {{ text-align: center; font-size: 24pt; font-weight: bold; color: #7a2222; text-transform: uppercase; margin-bottom: 10px; border-bottom: 2px solid #7a2222; padding-bottom: 10px; }}
+    .other-section-header {{ text-align: center; font-size: 24pt; font-weight: bold; color: {THEME_COLOR}; text-transform: uppercase; margin-bottom: 10px; border-bottom: 2px solid {THEME_COLOR}; padding-bottom: 10px; }}
     .other-section-subtitle {{ text-align: center; font-size: 10pt; color: #666; margin-bottom: 30px; font-style: italic; padding: 0 10%; line-height: 1.5; }}
     .other-article {{ margin-bottom: 40px; }}
     .other-article-top-block {{
@@ -494,13 +497,13 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
         color: #666666;
     }}
     .ad-contact a {{
-        color: #7a2222;
+        color: {THEME_COLOR};
         text-decoration: none;
         font-weight: bold;
     }}
     
     .back-to-toc {{ text-align: right; margin-top: 15px; font-size: 9pt; }}
-    .back-to-toc a {{ color: #7a2222; text-decoration: none; }}
+    .back-to-toc a {{ color: {THEME_COLOR}; text-decoration: none; }}
     
     .contacts-page {{ page-break-before: always; padding-top: 10mm; }}
 </style>
@@ -610,7 +613,7 @@ if kiti_straipsniai:
 
 html_kodas += f"""
     <div class="contacts-page">
-        <h1 style="border-bottom: 2px solid #7a2222; padding-bottom: 10px; margin-bottom: 20px;">Redakcija ir kontaktai</h1>
+        <h1 style="border-bottom: 2px solid {THEME_COLOR}; ...">Redakcija ir kontaktai</h1>
         <div style="font-size: 11pt; line-height: 1.6; margin-bottom: 30px; text-align: left;">
             <strong>Interneto dienraštis „Bernardinai.lt“</strong><br>
             Veiklos pradžia – 2004 m. vasario 21 d.<br><br>
@@ -704,25 +707,25 @@ if api_key:
         f"https://www.bernardinai.lt/savaitrastis/{current_year}/kulturos_savaitrastis_{today_str}.pdf"
     )
 
-    email_html = f"""<!DOCTYPE html>
+email_html = f"""<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Kultūros savaitraštis</title>
+    <title>Savaitraštis</title>
 </head>
 <body style="margin: 0; padding: 0; background-color: #f4f4f4;">
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; padding: 20px;">
         <div style="text-align: center; margin-bottom: 30px;">
             <img src="https://raw.githubusercontent.com/Bernardinai/bernardinai/main/logo.png" alt="Bernardinai.lt" style="max-width: 200px;">
         </div>
-        <h1 style="text-align: center; color: #111; font-size: 24px;">Naujausias Kultūros savaitraštis jau paruoštas!</h1>
-        <p style="text-align: center; color: #555; font-size: 16px;">Sveiki, paruošėme jums {leidinio_data} geriausių kultūros tekstų rinkinį žurnalo formatu.</p>
+        <h1 style="text-align: center; color: #111; font-size: 24px;">Naujausias savaitraštis jau paruoštas!</h1>
+        <p style="text-align: center; color: #555; font-size: 16px;">Sveiki, paruošėme jums {leidinio_data} geriausių tekstų rinkinį žurnalo formatu.</p>
         
         <div style="text-align: center; margin: 40px 0;">
-            <a href="{pdf_url}" style="background-color: #d32f2f; color: #ffffff; padding: 15px 30px; text-decoration: none; font-size: 18px; font-weight: bold; border-radius: 5px; display: inline-block;">Atsisiųsti PDF savaitraštį</a>
+            <a href="{pdf_url}" style="background-color: {THEME_COLOR}; color: #ffffff; padding: 15px 30px; text-decoration: none; font-size: 18px; font-weight: bold; border-radius: 5px; display: inline-block;">Atsisiųsti PDF savaitraštį</a>
         </div>
         
-        <h2 style="color: #7a2222; border-bottom: 2px solid #7a2222; padding-bottom: 10px; margin-top: 40px;">Savaitės svarbiausi</h2>
+        <h2 style="color: {THEME_COLOR}; border-bottom: 2px solid {THEME_COLOR}; padding-bottom: 10px; margin-top: 40px;">Savaitės svarbiausi</h2>
     """
 
     for straipsnis in pagrindiniai_straipsniai:
@@ -730,22 +733,22 @@ if api_key:
         <div style="margin-bottom: 40px; padding-bottom: 20px; border-bottom: 1px solid #eee;">
             {f'<img src="{straipsnis["image"]}" style="width: 100%; max-width: 600px; border-radius: 8px; margin-bottom: 15px;">' if straipsnis['image'] else ''}
             <h3 style="margin: 0 0 10px 0;"><a href="{straipsnis['link']}" style="color: #111; text-decoration: none; font-size: 20px;">{straipsnis['title']}</a></h3>
-            <div style="color: #7a2222; font-size: 12px; font-weight: bold; margin-bottom: 10px; text-transform: uppercase;">{straipsnis['author']} | Bernardinai.lt | Publikuota: {straipsnis['date']}</div>
+            <div style="color: {THEME_COLOR}; font-size: 12px; font-weight: bold; margin-bottom: 10px; text-transform: uppercase;">{straipsnis['author']} | Bernardinai.lt | Publikuota: {straipsnis['date']}</div>
             <p style="color: #555; font-size: 15px; line-height: 1.5; margin: 0;">{straipsnis['excerpt']}</p>
         </div>
         """
 
     if kiti_straipsniai:
-        email_html += """
-        <h2 style="color: #7a2222; border-bottom: 2px solid #7a2222; padding-bottom: 10px; margin-top: 40px;">Kiti savaitės kultūros tekstai</h2>
-        <p style="color: #666; font-size: 13px; font-style: italic; margin-bottom: 20px;">Čia rasite Bernardinai.lt redaktorių ir žurnalistų atrinktus svarbiausius savaitės kultūros tekstus, interviu bei menų apžvalgas.</p>
+        email_html += f"""
+        <h2 style="color: {THEME_COLOR}; border-bottom: 2px solid {THEME_COLOR}; padding-bottom: 10px; margin-top: 40px;">Kiti savaitės tekstai</h2>
+        <p style="color: #666; font-size: 13px; font-style: italic; margin-bottom: 20px;">Čia rasite Bernardinai.lt redaktorių ir žurnalistų atrinktus svarbiausius savaitės tekstus ir interviu.</p>
         """
         for straipsnis in kiti_straipsniai:
             email_html += f"""
             <div style="margin-bottom: 40px; padding-bottom: 20px; border-bottom: 1px solid #eee;">
                 {f'<img src="{straipsnis["image"]}" style="width: 100%; max-width: 600px; border-radius: 8px; margin-bottom: 15px;">' if straipsnis['image'] else ''}
                 <h3 style="margin: 0 0 10px 0;"><a href="{straipsnis['link']}" style="color: #111; text-decoration: none; font-size: 20px;">{straipsnis['title']}</a></h3>
-                <div style="color: #7a2222; font-size: 12px; font-weight: bold; margin-bottom: 10px; text-transform: uppercase;">Publikuota: {straipsnis['date']}</div>
+                <div style="color: {THEME_COLOR}; font-size: 12px; font-weight: bold; margin-bottom: 10px; text-transform: uppercase;">Publikuota: {straipsnis['date']}</div>
                 <p style="color: #555; font-size: 15px; line-height: 1.5; margin: 0;">{straipsnis['excerpt']}</p>
             </div>
             """
