@@ -765,7 +765,7 @@ if api_key:
 </html>
 """
 
-    kultura_group_id = int(os.environ.get("MAILERLITE_GROUP_ID", 103032161))
+    kultura_group_id = int(os.environ.get("MAILERLITE_GROUP_ID", 103032162))
     payload_campaign = {
         "type": "regular",
         "groups": [kultura_group_id],
@@ -773,7 +773,7 @@ if api_key:
         "from": "naujienlaiskis@bernardinai.lt",
         "from_name": "Bernardinai.lt kultūros savaitraštis",
         "language": "lt",
-        "google_analytics": f"kulturos-savaitrastis-{today_str}",
+        "google_analytics": f"kulturos-savaitrastis-{today_str}",  # GA UTM kampanijos žyma
     }
 
     req_campaign = urllib.request.Request(
