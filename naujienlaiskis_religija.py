@@ -412,7 +412,7 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     .cover-page {{ page: cover; position: relative; width: 210mm; height: 297mm; background-color: #1a1a1a; overflow: hidden; }}
     .bg-img {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }}
     .overlay {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(26, 26, 26, 0.70); z-index: 2; }}
-    .cover-content {{ position: absolute; top: 48%; left: 50%; transform: translate(-50%, -50%); text-align: center; width: 88%; color: white; z-index: 3; }}
+    .cover-content {{ position: absolute; top: 44%; left: 50%; transform: translate(-50%, -50%); text-align: center; width: 88%; color: white; z-index: 3; page-break-inside: avoid; break-inside: avoid; }}
     .logo-container {{ background-color: rgba(255, 255, 255, 0.9); padding: 15px 30px; border-radius: 12px; display: inline-block; margin-bottom: 25px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }}
     .logo-main {{ max-width: 220px; display: block; }}
     .main-title {{ font-size: 38pt; font-weight: bold; margin-bottom: 15px; letter-spacing: 1px; text-transform: uppercase; line-height: 1.15; }}
@@ -599,13 +599,11 @@ if kiti_straipsniai:
                 </div>
                 {straipsnis['content']}
                 """
-            + gauti_reklamos_bloka("religija", reklamos_indeksas, "pdf")
             + """
                 <div class="back-to-toc"><a href="#turinys">↑ Grįžti į turinį</a></div>
             </div>
         """
         )
-        reklamos_indeksas += 1
     html_kodas += """
         </div>
     </div>
@@ -753,8 +751,6 @@ if api_key:
             </div>
             """
 
-    email_html += gauti_reklamos_bloka("religija", reklamos_indeksas, "email")
-    reklamos_indeksas += 1
     email_html += f"""
         <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; font-size: 12px; color: #999;">
             ISSN 3120-9742<br>
