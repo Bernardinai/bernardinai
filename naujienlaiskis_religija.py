@@ -412,13 +412,31 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     .cover-page {{ page: cover; position: relative; width: 210mm; height: 297mm; background-color: #1a1a1a; overflow: hidden; }}
     .bg-img {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }}
     .overlay {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(26, 26, 26, 0.70); z-index: 2; }}
-    .cover-content {{ position: absolute; top: 44%; left: 50%; transform: translate(-50%, -50%); text-align: center; width: 88%; color: white; z-index: 3; page-break-inside: avoid; break-inside: avoid; }}
-    .logo-container {{ background-color: rgba(255, 255, 255, 0.9); padding: 15px 30px; border-radius: 12px; display: inline-block; margin-bottom: 25px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }}
+    .cover-content {{ 
+        position: absolute; 
+        top: 45%; /* Pakelta šiek tiek aukščiau iš 48% */
+        left: 50%; 
+        transform: translate(-50%, -50%); 
+        text-align: center; 
+        width: 88%; 
+        color: white; 
+        z-index: 3; 
+        page-break-inside: avoid; /* Griežtai neleidžia skelti į kitą puslapį */
+    }}
+    .logo-container {{ background-color: rgba(255, 255, 255, 0.9); padding: 15px 30px; border-radius: 12px; display: inline-block; margin-bottom: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }}
     .logo-main {{ max-width: 220px; display: block; }}
     .main-title {{ font-size: 38pt; font-weight: bold; margin-bottom: 15px; letter-spacing: 1px; text-transform: uppercase; line-height: 1.15; }}
-    .sub-title {{ font-size: 16pt; color: #E0E0E0; margin-bottom: 30px; font-style: italic; }}
-    .divider {{ width: 80px; height: 4px; background-color: {THEME_COLOR}; margin: 0 auto 30px auto; border-radius: 2px; }}
-    .meta-box {{ display: inline-block; background-color: rgba(0,0,0,0.55); padding: 15px 30px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); border-left: 5px solid {THEME_COLOR}; }}
+    .sub-title {{ font-size: 16pt; color: #E0E0E0; margin-bottom: 20px; font-style: italic; }}
+    .divider {{ width: 80px; height: 4px; background-color: {THEME_COLOR}; margin: 0 auto 20px auto; border-radius: 2px; }}
+    .meta-box {{ 
+        display: inline-block; 
+        background-color: rgba(0,0,0,0.55); 
+        padding: 15px 30px; 
+        border-radius: 8px; 
+        border: 1px solid rgba(255,255,255,0.15); 
+        border-left: 5px solid {THEME_COLOR};
+        page-break-before: avoid; /* Neleidžia elementui "pabėgti" */
+    }}
     .meta {{ font-size: 9.5pt; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.8; white-space: nowrap; }}
     
     .toc-page {{ page-break-before: always; page-break-after: always; padding-top: 10mm; }}
