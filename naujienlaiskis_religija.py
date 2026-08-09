@@ -707,7 +707,7 @@ if api_key:
         f"https://www.bernardinai.lt/savaitrastis/{current_year}/religijos_savaitrastis_{today_str}.pdf"
     )
 
-email_html = f"""<!DOCTYPE html>
+    email_html = f"""<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
@@ -728,8 +728,8 @@ email_html = f"""<!DOCTYPE html>
         <h2 style="color: {THEME_COLOR}; border-bottom: 2px solid {THEME_COLOR}; padding-bottom: 10px; margin-top: 40px;">Savaitės svarbiausi</h2>
     """
 
-for straipsnis in pagrindiniai_straipsniai:
-    email_html += f"""
+    for straipsnis in pagrindiniai_straipsniai:
+        email_html += f"""
         <div style="margin-bottom: 40px; padding-bottom: 20px; border-bottom: 1px solid #eee;">
             {f'<img src="{straipsnis["image"]}" style="width: 100%; max-width: 600px; border-radius: 8px; margin-bottom: 15px;">' if straipsnis['image'] else ''}
             <h3 style="margin: 0 0 10px 0;"><a href="{straipsnis['link']}" style="color: #111; text-decoration: none; font-size: 20px;">{straipsnis['title']}</a></h3>
