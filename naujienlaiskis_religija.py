@@ -550,7 +550,7 @@ if kiti_straipsniai:
 
 html_kodas += f"""
         </ul>
-        {f'<div style="background-color: #fcfcfc; border-left: 4px solid #7a2222; padding: 12px 18px; margin: 35px auto 10px auto; max-width: 464px; font-size: 10pt; color: #444; font-style: italic; text-align: center;">{ankstesnio_nr_tekstas}</div>' if ankstesnio_nr_tekstas else ''}
+        {f'<div style="background-color: #fcfcfc; border-left: 4px solid {THEME_COLOR}; padding: 12px 18px; margin: 35px auto 10px auto; max-width: 464px; font-size: 10pt; color: #444; font-style: italic; text-align: center;">{ankstesnio_nr_tekstas}</div>' if ankstesnio_nr_tekstas else ''}
         <div class="intro-box">
             <h3 style="margin-top: 0; color: #222; font-size: 16pt;">Palaikykite mūsų veiklą</h3>
             <p style="color: #555;">Bernardinai.lt yra nepriklausomas leidinys, savo misiją tęsiantis išskirtinai skaitytojų paramos dėka. Kviečiame mus paremti.</p>
@@ -613,7 +613,7 @@ if kiti_straipsniai:
 
 html_kodas += f"""
     <div class="contacts-page">
-        <h1 style="border-bottom: 2px solid {THEME_COLOR}; ...">Redakcija ir kontaktai</h1>
+        <h1 style="border-bottom: 2px solid {THEME_COLOR}; padding-bottom: 10px; margin-bottom: 20px;">Redakcija ir kontaktai</h1>
         <div style="font-size: 11pt; line-height: 1.6; margin-bottom: 30px; text-align: left;">
             <strong>Interneto dienraštis „Bernardinai.lt“</strong><br>
             Veiklos pradžia – 2004 m. vasario 21 d.<br><br>
@@ -974,7 +974,7 @@ if wp_user and wp_pass:
 
     wp_html_turinys = f"""<p>Skaitytojams pateikiame interneto dienraščio „Bernardinai.lt“ Religijos naujienų ir tikėjimo savaitraščio numerį ({leidinio_data}, Nr. {leidinio_numeris}). Šiame leidinyje rasite redaktorių atrinktus svarbiausius savaitės religijos, dvasingumo bei tikėjimo tekstus ir pokalbius, paruoštus patogiam skaitymui žurnalo formatu.</p>
 <p style="margin: 30px 0; text-align: center;">
-    <a href="{pdf_url}" target="_blank" rel="noopener noreferrer" style="background-color: #d32f2f; color: #ffffff; padding: 14px 28px; text-decoration: none; font-weight: bold; border-radius: 5px; display: inline-block; font-size: 16px;">
+    <a href="{pdf_url}" target="_blank" rel="noopener noreferrer" style="background-color: {THEME_COLOR}; color: #ffffff; padding: 14px 28px; text-decoration: none; font-weight: bold; border-radius: 5px; display: inline-block; font-size: 16px;">
         Atsisiųsti PDF savaitraštį
     </a>
 </p>
