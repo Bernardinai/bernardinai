@@ -707,7 +707,7 @@ if api_key:
         f"https://www.bernardinai.lt/savaitrastis/{current_year}/kulturos_savaitrastis_{today_str}.pdf"
     )
 
-email_html = f"""<!DOCTYPE html>
+    email_html = f"""<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
