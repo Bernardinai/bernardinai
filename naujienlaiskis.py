@@ -12,6 +12,7 @@ import urllib.parse
 import urllib.request
 from weasyprint import HTML
 from zoneinfo import ZoneInfo
+feedparser.USER_AGENT = "Bernardinai-Naujienlaiskis-Bot/1.0"
 
 event_name = os.environ.get("EVENT_NAME", "")
 force_real = os.environ.get("TIKRAS_LEIDINYS", "false").lower() == "true"
