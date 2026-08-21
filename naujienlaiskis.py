@@ -719,7 +719,7 @@ if api_key:
         <div style="text-align: center; margin-bottom: 30px;">
             <img src="https://raw.githubusercontent.com/Bernardinai/bernardinai/main/logo.png" alt="Bernardinai.lt" style="max-width: 200px;">
         </div>
-        <h1 style="text-align: center; color: #111; font-size: 24px;">Naujausias savaitraštis jau paruoštas!</h1>
+        <h1 style="text-align: center; color: #111; font-size: 24px;">Naujausias „Bernardinai.lt“ Kultūros savaitraštis jau paruoštas!</h1>
         <p style="text-align: center; color: #555; font-size: 16px;">Sveiki, paruošėme jums {leidinio_data} geriausių tekstų rinkinį žurnalo formatu.</p>
         
         <div style="text-align: center; margin: 40px 0;">
@@ -802,7 +802,7 @@ if api_key:
                 payload_content = {
                     "html": email_html,
                     "plain": (
-                        "Naujausias Kultūros savaitraštis jau"
+                        "Naujausias „Bernardinai.lt“ Kultūros savaitraštis jau"
                         " paruoštas!\n\nAtsisiųsti PDF galite čia:"
                         f" {pdf_url}\n\nPeržiūrėti naršyklėje:"
                         " {$url}\nAtsisakyti naujienlaiškio: {$unsubscribe}"
