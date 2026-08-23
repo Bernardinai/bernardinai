@@ -79,7 +79,6 @@ else:
 
 api_key = os.environ.get("MAILERLITE_API_KEY")
 
-
 def gauti_linksni(skaicius):
     paskutiniai_du = skaicius % 100
     paskutinis = skaicius % 10
@@ -89,7 +88,6 @@ def gauti_linksni(skaicius):
         return "prenumeratoriui"
     else:
         return "prenumeratoriams"
-
 
 def gauti_paskutines_kampanijos_gavejus(api_key):
     if not api_key:
@@ -114,7 +112,6 @@ def gauti_paskutines_kampanijos_gavejus(api_key):
     except Exception as e:
         print(f"Nepavyko gauti praėjusio numerio gavėjų skaičiaus: {e}")
     return None
-
 
 ankstesnio_nr_tekstas = ""
 if is_real_run and numeris > 1:
@@ -147,8 +144,6 @@ if os.path.exists(logo_failas):
         encoded_string = base64.b64encode(image_file.read()).decode("utf-8")
         logo_src = f"data:image/png;base64,{encoded_string}"
 
-
-# --- Nuotraukų URL valymo funkcija (pašalina weserv.nl proxy) ---
 def isvalyti_img_url(url):
     if not url:
         return ""
@@ -161,8 +156,6 @@ def isvalyti_img_url(url):
         url = "https://" + url.lstrip("/")
     return url
 
-
-# --- SAUGUS REKLAMŲ MODULIO ĮKĖLIMAS IŠ ATSIKRO FAILO reklamos.py ---
 try:
     from reklamos import gauti_reklamos_bloka
 except Exception as e:
@@ -187,11 +180,9 @@ except Exception as e:
             </div>
             """
 
-
 matyti_url = set()
 pagrindiniai_straipsniai = []
 kiti_straipsniai = []
-
 
 def apdoroti_straipsni(entry, is_main=True):
     link = getattr(entry, "link", "#")
@@ -341,7 +332,6 @@ def apdoroti_straipsni(entry, is_main=True):
         "link": link,
     }
 
-
 print("Nuskaitomas pagrindinis RSS srautas (Religija)...")
 for puslapis in range(1, 10):
     rss_url = (
@@ -390,10 +380,7 @@ if not cover_bg_image:
             cover_bg_image = straipsnis["image"]
             break
 
-# REKLAMŲ INDEKSAS KARUSELEI
 reklamos_indeksas = 0
-
-# TEMINĖ LEIDINIO SPALVA (Karališka Indigo / Mėlyna)
 THEME_COLOR = "#2b5c8f"
 
 html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
@@ -414,14 +401,14 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     .overlay {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(26, 26, 26, 0.70); z-index: 2; }}
     .cover-content {{ 
         position: absolute; 
-        top: 45%; /* Pakelta šiek tiek aukščiau iš 48% */
+        top: 45%;
         left: 50%; 
         transform: translate(-50%, -50%); 
         text-align: center; 
         width: 88%; 
         color: white; 
         z-index: 3; 
-        page-break-inside: avoid; /* Griežtai neleidžia skelti į kitą puslapį */
+        page-break-inside: avoid;
     }}
     .logo-container {{ background-color: rgba(255, 255, 255, 0.9); padding: 15px 30px; border-radius: 12px; display: inline-block; margin-bottom: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }}
     .logo-main {{ max-width: 220px; display: block; }}
@@ -435,7 +422,7 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
         border-radius: 8px; 
         border: 1px solid rgba(255,255,255,0.15); 
         border-left: 5px solid {THEME_COLOR};
-        page-break-before: avoid; /* Neleidžia elementui "pabėgti" */
+        page-break-before: avoid;
     }}
     .meta {{ font-size: 9.5pt; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.8; white-space: nowrap; }}
     
@@ -693,6 +680,47 @@ except Exception as e:
     print(">>> GRIEŽTA KLAIDA GENERUOJANT PDF:")
     traceback.print_exc()
     sys.exit(1)
+
+# =========================================================================
+# NAUJAS ŽINGSNIS: SFTP ĮKĖLIMAS TIESIAI IŠ PYTHON.
+# Jei šis žingsnis nepavyks, programa bus nutraukta ir laiškai neišsiųsti!
+# =========================================================================
+if is_real_run:
+    ftp_server = os.environ.get("FTP_SERVER")
+    ftp_user = os.environ.get("FTP_USERNAME")
+    ftp_pass = os.environ.get("FTP_PASSWORD")
+    
+    if ftp_server and ftp_user and ftp_pass:
+        print(f">>> Pradedamas failo kėlimas į SFTP serverį ({ftp_server})...")
+        try:
+            import paramiko
+            # Prisijungiame prie SFTP (prievadas 22)
+            transport = paramiko.Transport((ftp_server, 22))
+            transport.connect(username=ftp_user, password=ftp_pass)
+            sftp = paramiko.SFTPClient.from_transport(transport)
+            
+            # Patikriname, ar serveryje yra šių metų aplankas, jei ne – sukuriame
+            try:
+                sftp.chdir(str(current_year))
+            except IOError:
+                sftp.mkdir(str(current_year))
+                sftp.chdir(str(current_year))
+                
+            # Įkeliame patį failą
+            filename = os.path.basename(pdf_archyvas)
+            sftp.put(pdf_archyvas, filename)
+            
+            sftp.close()
+            transport.close()
+            print(f">>> Sėkmingai įkelta į serverį: {filename}")
+        except Exception as e:
+            print(">>> GRIEŽTA KLAIDA: Nepavyko įkelti PDF į serverį!")
+            print(f"Klaidos detalės: {e}")
+            print(">>> PROCESAS NUTRAUKIAMAS. Laiškai nebus siunčiami.")
+            sys.exit(1)  # Ši komanda sustabdo programą!
+    else:
+        print(">>> ĮSPĖJIMAS: Nerasti FTP prisijungimo duomenys. Failas į serverį nekeliamas.")
+
 
 if is_real_run:
     try:
