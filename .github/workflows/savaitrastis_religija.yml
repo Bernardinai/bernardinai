@@ -58,6 +58,13 @@ jobs:
             git push
           fi
 
+      # NAUJAS ŽINGSNIS: Garantuotas PDF prieinamumas per "Artifacts"
+      - name: 6.5. Patogus PDF atsiuntimas per Actions langą
+        uses: actions/upload-artifact@v4
+        with:
+          name: religijos-savaitrastis-pdf
+          path: archyvas/
+
       - name: 7. FTP ikelimas i serveri
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
