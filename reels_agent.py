@@ -112,7 +112,7 @@ def upload_to_youtube(video_file, video_title, video_description):
 
 
 def main():
-    feedparser.USER_AGENT = "BernardinaiVideoBot/1.0"
+    feedparser.USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     dynamic_url = f"{RSS_URL}&nocache={int(time.time())}"
     feed = feedparser.parse(dynamic_url)
 
@@ -161,10 +161,7 @@ def main():
 
         if not image_url and "links" in entry:
             for link in entry.links:
-                if (
-                    link.get("rel") == "enclosure"
-                    and "image" in link.get("type", "")
-                ):
+                if link.get("rel") == "enclosure" and "image" in link.get("type", ""):
                     image_url = link.get("href")
                     break
 
@@ -173,29 +170,52 @@ def main():
             if "content" in entry:
                 for c in entry.content:
                     full_text += " " + c.value
-            img_match = re.search(
-                r'<img[^>]+src=["\']([^"\']+)["\']', full_text, re.IGNORECASE
-            )
-            if img_match:
-                image_url = img_match.group(1)
+            
+            # Ieškome visų nuotraukų ir atmetame "MailerLite" sekimo pikselius
+            img_matches = re.findall(r'<img[^>]+src=["\']([^"\']+)["\']', full_text, re.IGNORECASE)
+            for img_src in img_matches:
+                # Jei tai nėra akivaizdus nematomas pikselis ar ikona
+                if "1x1" not in img_src and "tracker" not in img_src and "avatar" not in img_src:
+                    image_url = img_src
+                    break
 
         temp_img_file = f"temp_img_{index}.jpg"
         has_image = False
+        
         if image_url:
+            # Sutvarkome nuorodą, jei ji be pradžios
+            if image_url.startswith("//"):
+                image_url = "https:" + image_url
+            elif image_url.startswith("/"):
+                image_url = "https://www.bernardinai.lt" + image_url
+                
             try:
-                req = urllib.request.Request(
-                    image_url,
-                    headers={"User-Agent": "BernardinaiVideoBot/1.0"},
-                )
-                with (
-                    urllib.request.urlopen(req) as response,
-                    open(temp_img_file, "wb") as out_file,
-                ):
-                    out_file.write(response.read())
-                Image.open(temp_img_file).verify()
+                print(f"Ieškoma nuotrauka straipsniui '{title[:30]}...': {image_url}")
+                
+                # Išplėstinės antraštės, kad apgautume serverio apsaugas
+                advanced_headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                    "Accept-Language": "lt,en-US;q=0.9,en;q=0.8",
+                    "Referer": "https://www.bernardinai.lt/"
+                }
+                
+                response = requests.get(image_url, headers=advanced_headers, timeout=15)
+                response.raise_for_status() 
+                
+                with open(temp_img_file, "wb") as out_file:
+                    out_file.write(response.content)
+                
+                with Image.open(temp_img_file) as img:
+                    img.verify()
+                    
                 has_image = True
-            except:
+                print("-> Nuotrauka sėkmingai atsiųsta ir patikrinta.")
+            except Exception as e:
+                print(f"!!! Nepavyko atsiųsti nuotraukos ({image_url}): {e}")
                 has_image = False
+        else:
+            print(f"!!! Nerasta jokios nuotraukos straipsnyje: {title[:30]}...")
 
         ui_canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(ui_canvas)
