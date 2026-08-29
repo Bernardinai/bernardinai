@@ -183,6 +183,19 @@ def main():
         has_image = False
         
         if image_url:
+            # Išvalome HTML šiukšles iš nuorodos
+            image_url = image_url.replace("&#038;", "&").replace("&amp;", "&")
+            
+            # Jei tai weserv.nl proxy, ištraukiame originalią Bernardinų nuotrauką
+            if "images.weserv.nl" in image_url and "url=" in image_url:
+                import urllib.parse
+                match = re.search(r"url=([^&]+)", image_url)
+                if match:
+                    clean_url = urllib.parse.unquote(match.group(1))
+                    if not clean_url.startswith("http"):
+                        clean_url = "https://" + clean_url.lstrip("/")
+                    image_url = clean_url
+
             # Sutvarkome nuorodą, jei ji be pradžios
             if image_url.startswith("//"):
                 image_url = "https:" + image_url
