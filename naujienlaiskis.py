@@ -680,6 +680,42 @@ except Exception as e:
     traceback.print_exc()
     sys.exit(1)
 
+# =========================================================================
+# NAUJAS ŽINGSNIS: SFTP ĮKĖLIMAS TIESIAI IŠ PYTHON.
+# Jei šis žingsnis nepavyks, programa bus nutraukta ir laiškai neišsiųsti!
+# =========================================================================
+if is_real_run:
+    ftp_server = os.environ.get("FTP_SERVER")
+    ftp_user = os.environ.get("FTP_USERNAME")
+    ftp_pass = os.environ.get("FTP_PASSWORD")
+    
+    if ftp_server and ftp_user and ftp_pass:
+        print(f">>> Pradedamas failo kėlimas į SFTP serverį ({ftp_server})...")
+        try:
+            import paramiko
+            transport = paramiko.Transport((ftp_server, 22))
+            transport.connect(username=ftp_user, password=ftp_pass)
+            sftp = paramiko.SFTPClient.from_transport(transport)
+            
+            try:
+                sftp.chdir(str(current_year))
+            except IOError:
+                sftp.mkdir(str(current_year))
+                sftp.chdir(str(current_year))
+                
+            filename = os.path.basename(pdf_archyvas)
+            sftp.put(pdf_archyvas, filename)
+            
+            sftp.close()
+            transport.close()
+            print(f">>> Sėkmingai įkelta į serverį: {filename}")
+        except Exception as e:
+            print(">>> GRIEŽTA KLAIDA: Nepavyko įkelti PDF į serverį!")
+            print(f"Klaidos detalės: {e}")
+            print(">>> PROCESAS NUTRAUKIAMAS. Laiškai nebus siunčiami.")
+            sys.exit(1)  
+    else:
+        print(">>> ĮSPĖJIMAS: Nerasti FTP prisijungimo duomenys. Failas į serverį nekeliamas.")
 if is_real_run:
     try:
         with open(tracker_file, "w", encoding="utf-8") as f:
