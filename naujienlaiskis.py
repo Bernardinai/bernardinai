@@ -67,7 +67,8 @@ if is_real_run:
 
                 if saved_year == current_year:
                     if last_run_date == today_str:
-                        numeris = saved_num
+                        print(">>> Šios dienos numeris jau buvo išleistas! Stabdome procesą, kad išvengtume dublikatų.")
+                        sys.exit(0)
                     else:
                         numeris = saved_num + 1
                 else:
