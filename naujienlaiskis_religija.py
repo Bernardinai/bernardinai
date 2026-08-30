@@ -683,7 +683,7 @@ except Exception as e:
     sys.exit(1)
 
 # =========================================================================
-# NAUJAS ŽINGSNIS: SFTP ĮKĖLIMAS TIESIAI IŠ PYTHON.
+# NAUJAS ŽINGSNIS: FTP ĮKĖLIMAS TIESIAI IŠ PYTHON.
 # Jei šis žingsnis nepavyks, programa bus nutraukta ir laiškai neišsiųsti!
 # =========================================================================
 if is_real_run:
@@ -692,33 +692,33 @@ if is_real_run:
     ftp_pass = os.environ.get("FTP_PASSWORD")
     
     if ftp_server and ftp_user and ftp_pass:
-        print(f">>> Pradedamas failo kėlimas į SFTP serverį ({ftp_server})...")
+        print(f">>> Pradedamas failo kėlimas į FTP serverį ({ftp_server})...")
         try:
-            import paramiko
-            # Prisijungiame prie SFTP (prievadas 22)
-            transport = paramiko.Transport((ftp_server, 22))
-            transport.connect(username=ftp_user, password=ftp_pass)
-            sftp = paramiko.SFTPClient.from_transport(transport)
+            import ftplib
+            
+            # Prisijungiame prie standartinio FTP (prievadas 21)
+            ftp = ftplib.FTP(ftp_server)
+            ftp.login(user=ftp_user, passwd=ftp_pass)
             
             # Patikriname, ar serveryje yra šių metų aplankas, jei ne – sukuriame
             try:
-                sftp.chdir(str(current_year))
-            except IOError:
-                sftp.mkdir(str(current_year))
-                sftp.chdir(str(current_year))
+                ftp.cwd(str(current_year))
+            except ftplib.error_perm:
+                ftp.mkd(str(current_year))
+                ftp.cwd(str(current_year))
                 
             # Įkeliame patį failą
             filename = os.path.basename(pdf_archyvas)
-            sftp.put(pdf_archyvas, filename)
+            with open(pdf_archyvas, "rb") as file:
+                ftp.storbinary(f"STOR {filename}", file)
             
-            sftp.close()
-            transport.close()
+            ftp.quit()
             print(f">>> Sėkmingai įkelta į serverį: {filename}")
         except Exception as e:
             print(">>> GRIEŽTA KLAIDA: Nepavyko įkelti PDF į serverį!")
             print(f"Klaidos detalės: {e}")
             print(">>> PROCESAS NUTRAUKIAMAS. Laiškai nebus siunčiami.")
-            sys.exit(1)  # Ši komanda sustabdo programą!
+            sys.exit(1)  
     else:
         print(">>> ĮSPĖJIMAS: Nerasti FTP prisijungimo duomenys. Failas į serverį nekeliamas.")
 
