@@ -397,36 +397,27 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     html, body {{ margin: 0; padding: 0; }}
     body {{ font-family: 'Georgia', serif; color: #222; line-height: 1.6; font-size: 11pt; }}
     
+    /* VIRŠELIO BENDRI NUSTATYMAI */
     .cover-page {{ page: cover; position: relative; width: 210mm; height: 297mm; background-color: #1a1a1a; overflow: hidden; }}
     .bg-img {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }}
-    .overlay {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(26, 26, 26, 0.70); z-index: 2; }}
-    .cover-content {{ 
-        position: absolute; 
-        top: 45%;
-        left: 50%; 
-        transform: translate(-50%, -50%); 
-        text-align: center; 
-        width: 88%; 
-        color: white; 
-        z-index: 3; 
-        page-break-inside: avoid;
-    }}
-    .logo-container {{ background-color: rgba(255, 255, 255, 0.9); padding: 15px 30px; border-radius: 12px; display: inline-block; margin-bottom: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }}
-    .logo-main {{ max-width: 220px; display: block; }}
-    .main-title {{ font-size: 38pt; font-weight: bold; margin-bottom: 15px; letter-spacing: 1px; text-transform: uppercase; line-height: 1.15; }}
-    .sub-title {{ font-size: 16pt; color: #E0E0E0; margin-bottom: 20px; font-style: italic; }}
-    .divider {{ width: 80px; height: 4px; background-color: {THEME_COLOR}; margin: 0 auto 20px auto; border-radius: 2px; }}
-    .meta-box {{ 
-        display: inline-block; 
-        background-color: rgba(0,0,0,0.55); 
-        padding: 15px 30px; 
-        border-radius: 8px; 
-        border: 1px solid rgba(255,255,255,0.15); 
-        border-left: 5px solid {THEME_COLOR};
-        page-break-before: avoid;
-    }}
-    .meta {{ font-size: 9.5pt; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.8; white-space: nowrap; }}
     
+    /* GRADIENTAS (Tamsėja tik nuo vidurio į apačią) */
+    .gradient-overlay {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 45%, rgba(0,0,0,0.85) 85%, rgba(15,15,15,1) 100%); z-index: 2; }}
+    
+    /* BALTA JUOSTA VIRŠUJE LOGOTIPUI */
+    .top-bar {{ position: absolute; top: 0; left: 0; width: 100%; background-color: #ffffff; text-align: center; padding: 25px 0; z-index: 5; border-bottom: 3px solid {THEME_COLOR}; }}
+    .logo-main {{ max-width: 240px; display: inline-block; vertical-align: middle; }}
+    
+    /* TEKSTAI APAČIOJE */
+    .cover-bottom-content {{ position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%); text-align: center; width: 95%; color: white; z-index: 5; }}
+    .main-title {{ font-size: 36pt; font-weight: bold; margin-bottom: 15px; letter-spacing: 2px; text-transform: uppercase; line-height: 1.15; text-shadow: 0 4px 15px rgba(0,0,0,0.6); }}
+    .divider {{ width: 100px; height: 3px; background-color: {THEME_COLOR}; margin: 0 auto 20px auto; }}
+    .sub-title {{ font-size: 18pt; color: #E0E0E0; margin-bottom: 35px; font-style: italic; text-shadow: 0 2px 8px rgba(0,0,0,0.6); }}
+    
+    /* TECHNINĖ INFORMACIJA (BE RĖMELIO) */
+    .meta-footer {{ font-size: 10pt; text-transform: uppercase; letter-spacing: 1px; line-height: 1.8; color: #d4d4d4; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.2); width: 85%; margin: 0 auto; }}
+    
+    /* TURINIO IR STRAIPSNIŲ STILIAI */
     .toc-page {{ page-break-before: always; page-break-after: always; padding-top: 10mm; }}
     .toc-title {{ text-align: center; font-size: 24pt; color: {THEME_COLOR}; text-transform: uppercase; margin-bottom: 30px; margin-top: 20px; }}
     .toc-list {{ list-style: none; padding: 0; margin: 0; }}
@@ -440,23 +431,9 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     .drop-cap {{ font-size: 350%; float: left; margin: 4px 8px 0 0; color: {THEME_COLOR}; line-height: 0.8; font-weight: bold; }}
     .article-columns p {{ margin-top: 0; margin-bottom: 15px; widows: 2; orphans: 2; }}
     
-    .article-page {{
-        margin-top: 40px;
-        padding-top: 30px;
-        border-top: 1px solid #cccccc;
-    }}
-    .article-page:first-of-type {{
-        margin-top: 0;
-        padding-top: 0;
-        border-top: none;
-    }}
-    .article-top-block {{
-        break-inside: avoid;
-        page-break-inside: avoid;
-        break-after: avoid;
-        page-break-after: avoid;
-        margin-bottom: 25px;
-    }}
+    .article-page {{ margin-top: 40px; padding-top: 30px; border-top: 1px solid #cccccc; }}
+    .article-page:first-of-type {{ margin-top: 0; padding-top: 0; border-top: none; }}
+    .article-top-block {{ break-inside: avoid; page-break-inside: avoid; break-after: avoid; page-break-after: avoid; margin-bottom: 25px; }}
     .article-header {{ text-align: center; margin-bottom: 20px; }}
     .article-title {{ font-size: 26pt; font-weight: bold; margin-bottom: 10px; line-height: 1.2; }}
     .article-meta {{ font-size: 10pt; color: #666; text-transform: uppercase; border-bottom: 2px solid #eee; padding-bottom: 10px; }}
@@ -466,72 +443,40 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     .other-section-header {{ text-align: center; font-size: 24pt; font-weight: bold; color: {THEME_COLOR}; text-transform: uppercase; margin-bottom: 10px; border-bottom: 2px solid {THEME_COLOR}; padding-bottom: 10px; }}
     .other-section-subtitle {{ text-align: center; font-size: 10pt; color: #666; margin-bottom: 30px; font-style: italic; padding: 0 10%; line-height: 1.5; }}
     .other-article {{ margin-bottom: 40px; }}
-    .other-article-top-block {{
-        break-inside: avoid;
-        page-break-inside: avoid;
-        break-after: avoid;
-        page-break-after: avoid;
-        margin-bottom: 15px;
-    }}
+    .other-article-top-block {{ break-inside: avoid; page-break-inside: avoid; break-after: avoid; page-break-after: avoid; margin-bottom: 15px; }}
     .other-article-title {{ font-size: 16pt; font-weight: bold; margin-bottom: 8px; line-height: 1.2; color: #111; }}
     .other-article-meta {{ font-size: 9pt; color: #666; text-transform: uppercase; border-bottom: 1px solid #eee; padding-bottom: 8px; }}
     .other-article img {{ width: 100% !important; height: auto !important; max-height: 300px; object-fit: cover; border-radius: 4px; margin-bottom: 5px; }}
     .other-article figure, .other-article .wp-caption {{ margin: 0 0 15px 0; width: 100% !important; break-inside: avoid; page-inside: avoid; }}
     .other-article figcaption, .other-article .wp-caption-text {{ font-size: 8pt; color: #777; font-style: italic; text-align: center; line-height: 1.3; margin-top: 5px; }}
     
-    .ad-box {{
-        margin: 35px auto 20px auto;
-        padding: 16px 24px;
-        background-color: #fcfcfc;
-        border: 1px dashed #cccccc;
-        border-radius: 6px;
-        text-align: center;
-        max-width: 420px;
-        break-inside: avoid;
-        page-break-inside: avoid;
-    }}
-    .ad-title {{
-        font-size: 10pt;
-        font-weight: bold;
-        color: #444444;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        margin-bottom: 5px;
-    }}
-    .ad-contact {{
-        font-size: 9.5pt;
-        color: #666666;
-    }}
-    .ad-contact a {{
-        color: {THEME_COLOR};
-        text-decoration: none;
-        font-weight: bold;
-    }}
+    .ad-box {{ margin: 35px auto 20px auto; padding: 16px 24px; background-color: #fcfcfc; border: 1px dashed #cccccc; border-radius: 6px; text-align: center; max-width: 420px; break-inside: avoid; page-break-inside: avoid; }}
+    .ad-title {{ font-size: 10pt; font-weight: bold; color: #444444; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; }}
+    .ad-contact {{ font-size: 9.5pt; color: #666666; }}
+    .ad-contact a {{ color: {THEME_COLOR}; text-decoration: none; font-weight: bold; }}
     
     .back-to-toc {{ text-align: right; margin-top: 15px; font-size: 9pt; }}
     .back-to-toc a {{ color: {THEME_COLOR}; text-decoration: none; }}
-    
     .contacts-page {{ page-break-before: always; padding-top: 10mm; }}
 </style>
 </head>
 <body>
     <div class="cover-page">
         {f'<img src="{cover_bg_image}" class="bg-img">' if cover_bg_image else ''}
-        <div class="overlay"></div>
-        <div class="cover-content">
-            <div class="logo-container">
-                {f'<img src="{logo_src}" class="logo-main">' if logo_src else '<div style="color:#111; font-size: 24pt; font-weight:bold;">Bernardinai.lt</div>'}
-            </div>
+        <div class="gradient-overlay"></div>
+        
+        <div class="top-bar">
+            {f'<img src="{logo_src}" class="logo-main">' if logo_src else '<div style="color:#111; font-size: 24pt; font-weight:bold;">Bernardinai.lt</div>'}
+        </div>
+        
+        <div class="cover-bottom-content">
             <div class="main-title">Religijos naujienų ir<br>tikėjimo savaitraštis</div>
-            <div class="sub-title">Geriausi savaitės tekstai vienoje vietoje</div>
             <div class="divider"></div>
-            <div class="meta-box">
-                <div class="meta">
-                    <strong>Leidinio data:</strong> {leidinio_data}<br>
-                    <strong>Numeris:</strong> {leidinio_numeris}<br>
-                    <strong>Laikotarpis:</strong> {savaites_laikotarpis}<br>
-                    ISSN 3120-9742
-                </div>
+            <div class="sub-title">Geriausi savaitės tekstai vienoje vietoje</div>
+            
+            <div class="meta-footer">
+                <strong>DATA:</strong> {leidinio_data} &nbsp;&nbsp;|&nbsp;&nbsp; <strong>NUMERIS:</strong> {leidinio_numeris}<br>
+                <strong>LAIKOTARPIS:</strong> {savaites_laikotarpis} &nbsp;&nbsp;|&nbsp;&nbsp; ISSN 3120-9742
             </div>
         </div>
     </div>
