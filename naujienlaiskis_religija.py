@@ -402,7 +402,7 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     .bg-img {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }}
     
     /* GRADIENTAS (Tamsėja tik nuo vidurio į apačią) */
-    .gradient-overlay {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 45%, rgba(0,0,0,0.85) 85%, rgba(15,15,15,1) 100%); z-index: 2; }}
+    .gradient-overlay {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.02) 25%, rgba(0,0,0,0.08) 40%, rgba(0,0,0,0.22) 55%, rgba(0,0,0,0.48) 70%, rgba(0,0,0,0.76) 84%, rgba(0,0,0,0.92) 93%, rgba(12,12,12,0.98) 100%); z-index: 2; }}
     
     /* BALTA JUOSTA VIRŠUJE LOGOTIPUI */
     .top-bar {{ position: absolute; top: 0; left: 0; width: 100%; background-color: #ffffff; text-align: center; padding: 25px 0; z-index: 5; border-bottom: 3px solid {THEME_COLOR}; }}
