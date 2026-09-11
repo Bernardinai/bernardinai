@@ -491,7 +491,7 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
             <div class="meta-footer">
                 <div><strong>DATA:</strong> {leidinio_data} &nbsp;&nbsp;|&nbsp;&nbsp; <strong>NUMERIS:</strong> {leidinio_numeris}</div>
                 <div style="margin-top: 4px;"><strong>LAIKOTARPIS:</strong> {savaites_laikotarpis}</div>
-                <div style="margin-top: 10px; font-size: 8pt; opacity: 0.65; letter-spacing: 1.5px;">ISSN 3120-9696</div>
+                <div style="margin-top: 10px; font-size: 8.5pt; opacity: 0.75;">ISSN 3120-9696</div>
             </div>
         </div>
     </div>
