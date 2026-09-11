@@ -415,7 +415,7 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     .sub-title {{ font-size: 18pt; color: #E0E0E0; margin-bottom: 35px; font-style: italic; text-shadow: 0 2px 8px rgba(0,0,0,0.6); }}
     
     /* TECHNINĖ INFORMACIJA (BE RĖMELIO) */
-    .meta-footer {{ font-size: 10pt; text-transform: uppercase; letter-spacing: 1px; line-height: 1.8; color: #d4d4d4; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.2); width: 85%; margin: 0 auto; }}
+    .meta-footer { font-size: 9.5pt; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.6; color: #d4d4d4; padding-top: 18px; border-top: 1px solid rgba(255,255,255,0.2); width: 90%; margin: 0 auto; }
     
     /* TURINIO IR STRAIPSNIŲ STILIAI */
     .toc-page {{ page-break-before: always; page-break-after: always; padding-top: 10mm; }}
@@ -475,8 +475,9 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
             <div class="sub-title">Geriausi savaitės tekstai vienoje vietoje</div>
             
             <div class="meta-footer">
-                <strong>DATA:</strong> {leidinio_data} &nbsp;&nbsp;|&nbsp;&nbsp; <strong>NUMERIS:</strong> {leidinio_numeris}<br>
-                <strong>LAIKOTARPIS:</strong> {savaites_laikotarpis} &nbsp;&nbsp;|&nbsp;&nbsp; ISSN 3120-9742
+                <div><strong>DATA:</strong> {leidinio_data} &nbsp;&nbsp;|&nbsp;&nbsp; <strong>NUMERIS:</strong> {leidinio_numeris}</div>
+                <div style="margin-top: 4px;"><strong>LAIKOTARPIS:</strong> {savaites_laikotarpis}</div>
+                <div style="margin-top: 10px; font-size: 8pt; opacity: 0.65; letter-spacing: 1.5px;">ISSN 3120-9742</div>
             </div>
         </div>
     </div>
