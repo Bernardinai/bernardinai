@@ -59,3 +59,39 @@ jobs:
             git pull --rebase origin main
             git push
           fi
+
+      - name: 7. Pranesimas apie SEKMINGA leidini
+        if: success()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.MAIL_SERVER }}
+          server_port: ${{ secrets.MAIL_PORT || 465 }}
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "✅ Savaitraštis sėkmingai sugeneruotas ir paruoštas"
+          to: ${{ secrets.NOTIFICATION_EMAIL || 'redakcija@bernardinai.lt' }}
+          from: "Savaitraščio Botas <${{ secrets.MAIL_USERNAME }}>"
+          body: |
+            Savaitraštis sėkmingai sugeneruotas!
+            
+            - PDF failas sukurtas ir patalpintas į archyvą.
+            - Įrašas WordPress svetainėje sukurtas.
+            - MailerLite kampanija paruošta.
+            - Paleidimo tipas: ${{ github.event.inputs.tikras_leidinys && 'Tikras numeris' || 'Bandomasis / Automatinis' }}
+
+      - name: 8. Pranesimas ivyks KLAIDAI
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.MAIL_SERVER }}
+          server_port: ${{ secrets.MAIL_PORT || 465 }}
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "❌ KLAIDA: Savaitraščio generavimas nepavyko"
+          to: ${{ secrets.NOTIFICATION_EMAIL || 'redakcija@bernardinai.lt' }}
+          from: "Savaitraščio Botas <${{ secrets.MAIL_USERNAME }}>"
+          body: |
+            Generuojant savaitraštį įvyko klaida!
+            
+            Patikrinkite veiksmų žurnalą GitHub Actions aplinkoje:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
