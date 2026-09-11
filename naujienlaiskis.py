@@ -489,8 +489,9 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
             <div class="sub-title">Geriausi savaitės tekstai vienoje vietoje</div>
             
             <div class="meta-footer">
-                <strong>DATA:</strong> {leidinio_data} &nbsp;&nbsp;|&nbsp;&nbsp; <strong>NUMERIS:</strong> {leidinio_numeris}<br>
-                <strong>LAIKOTARPIS:</strong> {savaites_laikotarpis} &nbsp;&nbsp;|&nbsp;&nbsp; ISSN 3120-9696
+                <div><strong>DATA:</strong> {leidinio_data} &nbsp;&nbsp;|&nbsp;&nbsp; <strong>NUMERIS:</strong> {leidinio_numeris}</div>
+                <div style="margin-top: 4px;"><strong>LAIKOTARPIS:</strong> {savaites_laikotarpis}</div>
+                <div style="margin-top: 10px; font-size: 8pt; opacity: 0.65; letter-spacing: 1.5px;">ISSN 3120-9696</div>
             </div>
         </div>
     </div>
