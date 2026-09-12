@@ -423,13 +423,13 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     .logo-main {{ max-width: 240px; display: inline-block; vertical-align: middle; }}
     
     /* TEKSTAI APAČIOJE */
-    .cover-bottom-content {{ position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%); text-align: center; width: 90%; color: white; z-index: 5; }}
+    .cover-bottom-content {{ position: absolute; bottom: 50px; left: 0; width: 100%; text-align: center; color: white; z-index: 5; }}
     .main-title {{ font-size: 42pt; font-weight: bold; margin-bottom: 15px; letter-spacing: 2px; text-transform: uppercase; line-height: 1.1; text-shadow: 0 4px 15px rgba(0,0,0,0.6); }}
     .divider {{ width: 100px; height: 3px; background-color: {THEME_COLOR}; margin: 0 auto 20px auto; }}
     .sub-title {{ font-size: 18pt; color: #E0E0E0; margin-bottom: 35px; font-style: italic; text-shadow: 0 2px 8px rgba(0,0,0,0.6); }}
     
     /* TECHNINĖ INFORMACIJA (BE RĖMELIO) */
-    .meta-footer {{ font-size: 9.5pt; text-transform: uppercase; line-height: 1.6; color: #d4d4d4; padding-top: 18px; border-top: 1px solid rgba(255,255,255,0.2); width: 90%; margin: 0 auto; }}
+    .meta-footer {{ font-size: 9.5pt; text-transform: uppercase; line-height: 1.6; color: #d4d4d4; padding-top: 18px; border-top: 1px solid rgba(255,255,255,0.2); width: 85%; margin: 0 auto; }}
     
     /* TURINIO IR STRAIPSNIŲ STILIAI */
     .toc-page {{ page-break-before: always; page-break-after: always; padding-top: 10mm; }}
