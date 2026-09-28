@@ -6,6 +6,7 @@ import json
 import os
 import re
 import sys
+import time
 import traceback
 import urllib.error
 import urllib.parse
@@ -218,7 +219,7 @@ def apdoroti_straipsni(entry, is_main=True):
             f"{pub_date_obj.year} m. {menesiai[pub_date_obj.month - 1]}"
             f" {pub_date_obj.day} d."
         )
-    except:
+    except Exception:
         pub_date_obj = datetime.datetime.now()
         data_lt = "Data nežinoma"
 
@@ -230,7 +231,7 @@ def apdoroti_straipsni(entry, is_main=True):
     # Tikslus autoriaus (-ių) nustatymas su taisyklinga lietuviška skyryba
     autorius = ""
     if hasattr(entry, "authors") and entry.authors:
-        names = [a.get("name", "").strip() for a in entry.authors if a.get("name")]
+        names = [a.get("name", "").strip() for a in entry.authors if isinstance(a, dict) and a.get("name")]
         names = [n for n in names if n.lower() not in ["admin", "bernardinai.lt", "redakcija"]]
         if len(names) == 1:
             autorius = names[0]
@@ -247,7 +248,15 @@ def apdoroti_straipsni(entry, is_main=True):
             or ""
         ).strip()
         if raw_author.lower() not in ["admin", "bernardinai.lt", "redakcija"]:
-            autorius = raw_author
+            parts = [p.strip() for p in raw_author.split(",") if p.strip()]
+            if len(parts) == 1:
+                autorius = parts[0]
+            elif len(parts) == 2:
+                autorius = f"{parts[0]} ir {parts[1]}"
+            elif len(parts) > 2:
+                autorius = ", ".join(parts[:-1]) + f" ir {parts[-1]}"
+            else:
+                autorius = raw_author
 
     aprasymas = getattr(entry, "description", "")
 
@@ -428,27 +437,20 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     html, body {{ margin: 0; padding: 0; }}
     body {{ font-family: 'Georgia', serif; color: #222; line-height: 1.6; font-size: 11pt; }}
     
-    /* VIRŠELIO BENDRI NUSTATYMAI */
     .cover-page {{ page: cover; position: relative; width: 210mm; height: 297mm; background-color: #1a1a1a; overflow: hidden; }}
     .bg-img {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }}
-    
-    /* GRADIENTAS (Tamsėja tik nuo vidurio į apačią) */
     .gradient-overlay {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.02) 25%, rgba(0,0,0,0.08) 40%, rgba(0,0,0,0.22) 55%, rgba(0,0,0,0.48) 70%, rgba(0,0,0,0.76) 84%, rgba(0,0,0,0.92) 93%, rgba(12,12,12,0.98) 100%); z-index: 2; }}
     
-    /* BALTA JUOSTA VIRŠUJE LOGOTIPUI */
     .top-bar {{ position: absolute; top: 0; left: 0; width: 100%; background-color: #ffffff; text-align: center; padding: 25px 0; z-index: 5; border-bottom: 3px solid {THEME_COLOR}; }}
     .logo-main {{ max-width: 240px; display: inline-block; vertical-align: middle; }}
     
-    /* TEKSTAI APAČIOJE */
     .cover-bottom-content {{ position: absolute; bottom: 50px; left: 0; width: 100%; text-align: center; color: white; z-index: 5; }}
     .main-title {{ font-size: 36pt; font-weight: bold; margin-bottom: 15px; letter-spacing: 2px; text-transform: uppercase; line-height: 1.15; text-shadow: 0 4px 15px rgba(0,0,0,0.6); }}
     .divider {{ width: 100px; height: 3px; background-color: {THEME_COLOR}; margin: 0 auto 20px auto; }}
     .sub-title {{ font-size: 18pt; color: #E0E0E0; margin-bottom: 35px; font-style: italic; text-shadow: 0 2px 8px rgba(0,0,0,0.6); }}
     
-    /* TECHNINĖ INFORMACIJA (BE RĖMELIO) */
     .meta-footer {{ font-size: 9.5pt; text-transform: uppercase; line-height: 1.6; color: #d4d4d4; padding-top: 18px; border-top: 1px solid rgba(255,255,255,0.2); width: 85%; margin: 0 auto; }}
     
-    /* TURINIO IR STRAIPSNIŲ STILIAI */
     .toc-page {{ page-break-before: always; page-break-after: always; padding-top: 10mm; }}
     .toc-title {{ text-align: center; font-size: 24pt; color: {THEME_COLOR}; text-transform: uppercase; margin-bottom: 30px; margin-top: 20px; }}
     .toc-list {{ list-style: none; padding: 0; margin: 0; }}
@@ -592,20 +594,16 @@ if kiti_straipsniai:
         meta_parts.append(f"Publikuota: {straipsnis['date']}")
         meta_eilute = " &nbsp;|&nbsp; ".join(meta_parts)
 
-        html_kodas += (
-            f"""
+        html_kodas += f"""
             <div class="other-article" id="kitas_{i}">
                 <div class="other-article-top-block">
                     <div class="other-article-title">{straipsnis['title']}</div>
                     <div class="other-article-meta">{meta_eilute}</div>
                 </div>
                 {straipsnis['content']}
-                """
-            + """
                 <div class="back-to-toc"><a href="#turinys">↑ Grįžti į turinį</a></div>
             </div>
         """
-        )
     html_kodas += """
         </div>
     </div>
@@ -679,43 +677,49 @@ except Exception as e:
     sys.exit(1)
 
 # =========================================================================
-# FTP ĮKĖLIMAS SU PASYVIU REŽIMU IR TIMEOUT APSAUGA
+# FTP ĮKĖLIMAS SU APSAUGA NUO TIMEOUT IR RETRY MECHANIZMU
 # =========================================================================
 if is_real_run:
-    ftp_server = os.environ.get("FTP_SERVER")
-    ftp_user = os.environ.get("FTP_USERNAME")
-    ftp_pass = os.environ.get("FTP_PASSWORD")
+    ftp_server = os.environ.get("FTP_SERVER", "").strip()
+    ftp_user = os.environ.get("FTP_USERNAME", "").strip()
+    ftp_pass = os.environ.get("FTP_PASSWORD", "").strip()
     
     if ftp_server and ftp_user and ftp_pass:
         print(f">>> Pradedamas failo kėlimas į FTP serverį ({ftp_server})...")
-        try:
-            import ftplib
-            
-            # Prisijungiama su 60 s laukimu ir pasyviu režimu (kad GitHub Actions nepatirtų timeout)
-            ftp = ftplib.FTP(timeout=60)
-            ftp.connect(ftp_server, 21)
-            ftp.login(user=ftp_user, passwd=ftp_pass)
-            ftp.set_pasv(True)
-            
-            # Patikriname, ar serveryje yra šių metų aplankas, jei ne – sukuriame
+        import ftplib
+        
+        ftp_uploaded = False
+        for attempt in range(1, 4):
             try:
-                ftp.cwd(str(current_year))
-            except ftplib.error_perm:
-                ftp.mkd(str(current_year))
-                ftp.cwd(str(current_year))
+                print(f"Bandymas {attempt}/3 jungtis prie FTP...")
+                ftp = ftplib.FTP(timeout=45)
+                ftp.connect(ftp_server, 21)
+                ftp.login(user=ftp_user, passwd=ftp_pass)
+                ftp.set_pasv(True)
                 
-            # Įkeliame patį failą
-            filename = os.path.basename(pdf_archyvas)
-            with open(pdf_archyvas, "rb") as file:
-                ftp.storbinary(f"STOR {filename}", file)
-            
-            ftp.quit()
-            print(f">>> Sėkmingai įkelta į serverį: {filename}")
-        except Exception as e:
-            print(">>> GRIEŽTA KLAIDA: Nepavyko įkelti PDF į serverį!")
-            print(f"Klaidos detalės: {e}")
+                try:
+                    ftp.cwd(str(current_year))
+                except ftplib.error_perm:
+                    ftp.mkd(str(current_year))
+                    ftp.cwd(str(current_year))
+                    
+                filename = os.path.basename(pdf_archyvas)
+                with open(pdf_archyvas, "rb") as file:
+                    ftp.storbinary(f"STOR {filename}", file)
+                
+                ftp.quit()
+                print(f">>> Sėkmingai įkelta į serverį: {filename}")
+                ftp_uploaded = True
+                break
+            except Exception as e:
+                print(f"Klaida bandyme {attempt}: {e}")
+                if attempt < 3:
+                    time.sleep(5)
+        
+        if not ftp_uploaded:
+            print(">>> GRIEŽTA KLAIDA: Nepavyko įkelti PDF į serverį po 3 bandymų!")
             print(">>> PROCESAS NUTRAUKIAMAS. Laiškai nebus siunčiami.")
-            sys.exit(1)  
+            sys.exit(1)
     else:
         print(">>> ĮSPĖJIMAS: Nerasti FTP prisijungimo duomenys. Failas į serverį nekeliamas.")
 
