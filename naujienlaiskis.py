@@ -1,7 +1,6 @@
 import base64
 import datetime
 from datetime import timedelta
-import feedparser
 import json
 import os
 import re
@@ -10,8 +9,10 @@ import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
-from weasyprint import HTML
 from zoneinfo import ZoneInfo
+import feedparser
+from weasyprint import HTML
+
 feedparser.USER_AGENT = "Bernardinai-Naujienlaiskis-Bot/1.0"
 
 event_name = os.environ.get("EVENT_NAME", "")
@@ -227,7 +228,8 @@ def apdoroti_straipsni(entry, is_main=True):
         if hasattr(entry, "source") and hasattr(entry.source, "title"):
             saltinis = entry.source.title
 
-    autorius = getattr(entry, "author", "Bernardinai.lt")
+    # 1 PATAISYMAS: patikimesnis autoriaus paėmimas iš RSS
+    autorius = getattr(entry, "author", "") or getattr(entry, "creator", "") or "Bernardinai.lt"
     aprasymas = getattr(entry, "description", "")
 
     izanga_clean = re.sub("<[^<]+>", "", aprasymas)
@@ -561,7 +563,7 @@ if kiti_straipsniai:
             <div class="other-article" id="kitas_{i}">
                 <div class="other-article-top-block">
                     <div class="other-article-title">{straipsnis['title']}</div>
-                    <div class="other-article-meta">Publikuota: {straipsnis['date']}</div>
+                    <div class="other-article-meta"><strong>{straipsnis['author']}</strong> &nbsp;|&nbsp; <strong>Bernardinai.lt</strong> &nbsp;|&nbsp; Publikuota: {straipsnis['date']}</div>
                 </div>
                 {straipsnis['content']}
                 """
@@ -749,12 +751,13 @@ if api_key:
         <h2 style="color: {THEME_COLOR}; border-bottom: 2px solid {THEME_COLOR}; padding-bottom: 10px; margin-top: 40px;">Kiti savaitės tekstai</h2>
         <p style="color: #666; font-size: 13px; font-style: italic; margin-bottom: 20px;">Čia rasite Bernardinai.lt redaktorių ir žurnalistų atrinktus svarbiausius savaitės tekstus ir interviu.</p>
         """
+        # 2 PATAISYMAS: įkelta {straipsnis['author']} | Bernardinai.lt | prie kitų tekstų el. laiške
         for straipsnis in kiti_straipsniai:
             email_html += f"""
             <div style="margin-bottom: 40px; padding-bottom: 20px; border-bottom: 1px solid #eee;">
                 {f'<img src="{straipsnis["image"]}" style="width: 100%; max-width: 600px; border-radius: 8px; margin-bottom: 15px;">' if straipsnis['image'] else ''}
                 <h3 style="margin: 0 0 10px 0;"><a href="{straipsnis['link']}" style="color: #111; text-decoration: none; font-size: 20px;">{straipsnis['title']}</a></h3>
-                <div style="color: {THEME_COLOR}; font-size: 12px; font-weight: bold; margin-bottom: 10px; text-transform: uppercase;">Publikuota: {straipsnis['date']}</div>
+                <div style="color: {THEME_COLOR}; font-size: 12px; font-weight: bold; margin-bottom: 10px; text-transform: uppercase;">{straipsnis['author']} | Bernardinai.lt | Publikuota: {straipsnis['date']}</div>
                 <p style="color: #555; font-size: 15px; line-height: 1.5; margin: 0;">{straipsnis['excerpt']}</p>
             </div>
             """
