@@ -13,6 +13,8 @@ import urllib.request
 from weasyprint import HTML
 from zoneinfo import ZoneInfo
 
+feedparser.USER_AGENT = "Bernardinai-Naujienlaiskis-Bot/1.0"
+
 event_name = os.environ.get("EVENT_NAME", "")
 force_real = os.environ.get("TIKRAS_LEIDINYS", "false").lower() == "true"
 is_real_run = (event_name == "schedule") or force_real
@@ -80,6 +82,7 @@ else:
 
 api_key = os.environ.get("MAILERLITE_API_KEY")
 
+
 def gauti_linksni(skaicius):
     paskutiniai_du = skaicius % 100
     paskutinis = skaicius % 10
@@ -89,6 +92,7 @@ def gauti_linksni(skaicius):
         return "prenumeratoriui"
     else:
         return "prenumeratoriams"
+
 
 def gauti_paskutines_kampanijos_gavejus(api_key):
     if not api_key:
@@ -113,6 +117,7 @@ def gauti_paskutines_kampanijos_gavejus(api_key):
     except Exception as e:
         print(f"Nepavyko gauti praėjusio numerio gavėjų skaičiaus: {e}")
     return None
+
 
 ankstesnio_nr_tekstas = ""
 if is_real_run and numeris > 1:
@@ -145,6 +150,7 @@ if os.path.exists(logo_failas):
         encoded_string = base64.b64encode(image_file.read()).decode("utf-8")
         logo_src = f"data:image/png;base64,{encoded_string}"
 
+
 def isvalyti_img_url(url):
     if not url:
         return ""
@@ -156,6 +162,7 @@ def isvalyti_img_url(url):
     if url and not url.startswith("http"):
         url = "https://" + url.lstrip("/")
     return url
+
 
 try:
     from reklamos import gauti_reklamos_bloka
@@ -181,9 +188,11 @@ except Exception as e:
             </div>
             """
 
+
 matyti_url = set()
 pagrindiniai_straipsniai = []
 kiti_straipsniai = []
+
 
 def apdoroti_straipsni(entry, is_main=True):
     link = getattr(entry, "link", "#")
@@ -218,7 +227,28 @@ def apdoroti_straipsni(entry, is_main=True):
         if hasattr(entry, "source") and hasattr(entry.source, "title"):
             saltinis = entry.source.title
 
-    autorius = getattr(entry, "author", "Bernardinai.lt")
+    # Tikslus autoriaus (-ių) nustatymas su taisyklinga lietuviška skyryba
+    autorius = ""
+    if hasattr(entry, "authors") and entry.authors:
+        names = [a.get("name", "").strip() for a in entry.authors if a.get("name")]
+        names = [n for n in names if n.lower() not in ["admin", "bernardinai.lt", "redakcija"]]
+        if len(names) == 1:
+            autorius = names[0]
+        elif len(names) == 2:
+            autorius = f"{names[0]} ir {names[1]}"
+        elif len(names) > 2:
+            autorius = ", ".join(names[:-1]) + f" ir {names[-1]}"
+
+    if not autorius:
+        raw_author = (
+            getattr(entry, "author", "")
+            or getattr(entry, "creator", "")
+            or getattr(entry, "dc_creator", "")
+            or ""
+        ).strip()
+        if raw_author.lower() not in ["admin", "bernardinai.lt", "redakcija"]:
+            autorius = raw_author
+
     aprasymas = getattr(entry, "description", "")
 
     izanga_clean = re.sub("<[^<]+>", "", aprasymas)
@@ -333,6 +363,7 @@ def apdoroti_straipsni(entry, is_main=True):
         "link": link,
     }
 
+
 print("Nuskaitomas pagrindinis RSS srautas (Religija)...")
 for puslapis in range(1, 10):
     rss_url = (
@@ -423,6 +454,7 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     .toc-list {{ list-style: none; padding: 0; margin: 0; }}
     .toc-item {{ border-bottom: 1px dotted #ccc; margin-bottom: 15px; padding-bottom: 5px; overflow: hidden; }}
     .toc-link {{ text-decoration: none; color: #222; display: block; }}
+    .toc-author {{ font-size: 9.5pt; color: #666; font-style: italic; font-weight: normal; margin-left: 6px; }}
     .toc-section-title {{ font-size: 14pt; color: {THEME_COLOR}; font-weight: bold; text-transform: uppercase; margin-top: 30px; margin-bottom: 15px; border-bottom: 2px solid {THEME_COLOR}; padding-bottom: 5px; }}
     .intro-box {{ background-color: #f9f9f9; padding: 30px; border-radius: 8px; border: 1px solid #eaeaea; margin: 35px auto 30px auto; max-width: 500px; text-align: center; }}
     .btn-support {{ display: inline-block; background-color: {THEME_COLOR}; color: #FFF; padding: 10px 20px; text-decoration: none; font-weight: bold; border-radius: 4px; margin-top: 15px; }}
@@ -489,7 +521,8 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
 """
 
 for i, straipsnis in enumerate(pagrindiniai_straipsniai):
-    html_kodas += f"""<li class="toc-item"><a href="#pagrindinis_{i}" class="toc-link"><strong>{straipsnis['title']}</strong></a></li>"""
+    autoriaus_span = f'<span class="toc-author">({straipsnis["author"]})</span>' if straipsnis["author"] else ""
+    html_kodas += f"""<li class="toc-item"><a href="#pagrindinis_{i}" class="toc-link"><strong>{straipsnis['title']}</strong>{autoriaus_span}</a></li>"""
 
 if kiti_straipsniai:
     html_kodas += """
@@ -498,7 +531,8 @@ if kiti_straipsniai:
         <ul class="toc-list">
 """
     for i, straipsnis in enumerate(kiti_straipsniai):
-        html_kodas += f"""<li class="toc-item"><a href="#kitas_{i}" class="toc-link"><strong>{straipsnis['title']}</strong></a></li>"""
+        autoriaus_span = f'<span class="toc-author">({straipsnis["author"]})</span>' if straipsnis["author"] else ""
+        html_kodas += f"""<li class="toc-item"><a href="#kitas_{i}" class="toc-link"><strong>{straipsnis['title']}</strong>{autoriaus_span}</a></li>"""
 
 html_kodas += f"""
         </ul>
@@ -512,13 +546,21 @@ html_kodas += f"""
 """
 
 for i, straipsnis in enumerate(pagrindiniai_straipsniai):
+    meta_parts = []
+    if straipsnis["author"]:
+        meta_parts.append(f"<strong>{straipsnis['author']}</strong>")
+    if straipsnis["source"]:
+        meta_parts.append(f"<strong>{straipsnis['source']}</strong>")
+    meta_parts.append(f"Publikuota: {straipsnis['date']}")
+    meta_eilute = " &nbsp;|&nbsp; ".join(meta_parts)
+
     html_kodas += (
         f"""
     <div class="article-page" id="pagrindinis_{i}">
         <div class="article-top-block">
             <div class="article-header">
                 <div class="article-title">{straipsnis['title']}</div>
-                <div class="article-meta"><strong>{straipsnis['author']}</strong> &nbsp;|&nbsp; <strong>Bernardinai.lt</strong> &nbsp;|&nbsp; Publikuota: {straipsnis['date']}</div>
+                <div class="article-meta">{meta_eilute}</div>
             </div>
             {f'<img src="{straipsnis["image"]}" class="article-image">' if straipsnis['image'] else ''}
         </div>
@@ -542,12 +584,20 @@ if kiti_straipsniai:
         <div class="article-columns">
     """
     for i, straipsnis in enumerate(kiti_straipsniai):
+        meta_parts = []
+        if straipsnis["author"]:
+            meta_parts.append(f"<strong>{straipsnis['author']}</strong>")
+        if straipsnis["source"]:
+            meta_parts.append(f"<strong>{straipsnis['source']}</strong>")
+        meta_parts.append(f"Publikuota: {straipsnis['date']}")
+        meta_eilute = " &nbsp;|&nbsp; ".join(meta_parts)
+
         html_kodas += (
             f"""
             <div class="other-article" id="kitas_{i}">
                 <div class="other-article-top-block">
                     <div class="other-article-title">{straipsnis['title']}</div>
-                    <div class="other-article-meta">Publikuota: {straipsnis['date']}</div>
+                    <div class="other-article-meta">{meta_eilute}</div>
                 </div>
                 {straipsnis['content']}
                 """
@@ -629,8 +679,7 @@ except Exception as e:
     sys.exit(1)
 
 # =========================================================================
-# NAUJAS ŽINGSNIS: FTP ĮKĖLIMAS TIESIAI IŠ PYTHON.
-# Jei šis žingsnis nepavyks, programa bus nutraukta ir laiškai neišsiųsti!
+# FTP ĮKĖLIMAS SU PASYVIU REŽIMU IR TIMEOUT APSAUGA
 # =========================================================================
 if is_real_run:
     ftp_server = os.environ.get("FTP_SERVER")
@@ -642,9 +691,11 @@ if is_real_run:
         try:
             import ftplib
             
-            # Prisijungiame prie standartinio FTP (prievadas 21)
-            ftp = ftplib.FTP(ftp_server)
+            # Prisijungiama su 60 s laukimu ir pasyviu režimu (kad GitHub Actions nepatirtų timeout)
+            ftp = ftplib.FTP(timeout=60)
+            ftp.connect(ftp_server, 21)
             ftp.login(user=ftp_user, passwd=ftp_pass)
+            ftp.set_pasv(True)
             
             # Patikriname, ar serveryje yra šių metų aplankas, jei ne – sukuriame
             try:
@@ -667,7 +718,6 @@ if is_real_run:
             sys.exit(1)  
     else:
         print(">>> ĮSPĖJIMAS: Nerasti FTP prisijungimo duomenys. Failas į serverį nekeliamas.")
-
 
 if is_real_run:
     try:
@@ -720,11 +770,19 @@ if api_key:
     """
 
     for straipsnis in pagrindiniai_straipsniai:
+        meta_parts_mail = []
+        if straipsnis["author"]:
+            meta_parts_mail.append(straipsnis["author"])
+        if straipsnis["source"]:
+            meta_parts_mail.append(straipsnis["source"])
+        meta_parts_mail.append(f"Publikuota: {straipsnis['date']}")
+        meta_mail_eilute = " | ".join(meta_parts_mail)
+
         email_html += f"""
         <div style="margin-bottom: 40px; padding-bottom: 20px; border-bottom: 1px solid #eee;">
             {f'<img src="{straipsnis["image"]}" style="width: 100%; max-width: 600px; border-radius: 8px; margin-bottom: 15px;">' if straipsnis['image'] else ''}
             <h3 style="margin: 0 0 10px 0;"><a href="{straipsnis['link']}" style="color: #111; text-decoration: none; font-size: 20px;">{straipsnis['title']}</a></h3>
-            <div style="color: {THEME_COLOR}; font-size: 12px; font-weight: bold; margin-bottom: 10px; text-transform: uppercase;">{straipsnis['author']} | Bernardinai.lt | Publikuota: {straipsnis['date']}</div>
+            <div style="color: {THEME_COLOR}; font-size: 12px; font-weight: bold; margin-bottom: 10px; text-transform: uppercase;">{meta_mail_eilute}</div>
             <p style="color: #555; font-size: 15px; line-height: 1.5; margin: 0;">{straipsnis['excerpt']}</p>
         </div>
         """
@@ -735,11 +793,19 @@ if api_key:
         <p style="color: #666; font-size: 13px; font-style: italic; margin-bottom: 20px;">Čia rasite Bernardinai.lt redaktorių ir žurnalistų atrinktus svarbiausius savaitės tekstus ir interviu.</p>
         """
         for straipsnis in kiti_straipsniai:
+            meta_parts_mail = []
+            if straipsnis["author"]:
+                meta_parts_mail.append(straipsnis["author"])
+            if straipsnis["source"]:
+                meta_parts_mail.append(straipsnis["source"])
+            meta_parts_mail.append(f"Publikuota: {straipsnis['date']}")
+            meta_mail_eilute = " | ".join(meta_parts_mail)
+
             email_html += f"""
             <div style="margin-bottom: 40px; padding-bottom: 20px; border-bottom: 1px solid #eee;">
                 {f'<img src="{straipsnis["image"]}" style="width: 100%; max-width: 600px; border-radius: 8px; margin-bottom: 15px;">' if straipsnis['image'] else ''}
                 <h3 style="margin: 0 0 10px 0;"><a href="{straipsnis['link']}" style="color: #111; text-decoration: none; font-size: 20px;">{straipsnis['title']}</a></h3>
-                <div style="color: {THEME_COLOR}; font-size: 12px; font-weight: bold; margin-bottom: 10px; text-transform: uppercase;">Publikuota: {straipsnis['date']}</div>
+                <div style="color: {THEME_COLOR}; font-size: 12px; font-weight: bold; margin-bottom: 10px; text-transform: uppercase;">{meta_mail_eilute}</div>
                 <p style="color: #555; font-size: 15px; line-height: 1.5; margin: 0;">{straipsnis['excerpt']}</p>
             </div>
             """
