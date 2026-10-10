@@ -631,8 +631,8 @@ html_kodas += f"""
                     <div style="font-size: 14pt; color: #111; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 5px;">Redakcija</div>
                     <p><strong>Jurgita Jačėnaitė</strong><br>Vyr. redaktorė<br>jurga@bernardinai.lt</p>
                     <p><strong>Austėja Zovytė</strong><br>Vyr. redaktorės pavaduotoja<br>austeja.zovyte@bernardinai.lt</p>
-                    <p><strong>Inga Bartulevičiūtė</strong><br>Visuomenės redaktorė<br>inga.bartuleviciute@bernardinai.lt</p>
-                    <p><strong>Rita Bagdonaitė</strong><br>Religijos redaktorė<br>rita.bagdonaite@bernardinai.lt</p>
+                    <p><strong>Inga Bartulevičiūtė</strong><br>Redaktorė<br>inga.bartuleviciute@bernardinai.lt</p>
+                    <p><strong>Rita Bagdonaitė</strong><br>Redaktorė<br>rita.bagdonaite@bernardinai.lt</p>
                     <p><strong>Vytautas Markevičius</strong><br>Žurnalistas<br>vytautas.markevicius@bernardinai.lt</p>
                     <p><strong>Austina Pakalnytė</strong><br>Žurnalistė<br>austina.pakalnyte@bernardinai.lt</p>
                     <p><strong>Ugnė Tulaitė</strong><br>Žurnalistė<br>ugne.tulaite@bernardinai.lt</p>
