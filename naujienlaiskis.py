@@ -879,6 +879,7 @@ wp_user = os.environ.get("WP_USERNAME")
 wp_pass = os.environ.get("WP_APP_PASSWORD")
 wp_category = int(os.environ.get("WP_CATEGORY_ID", 18))
 wp_acf_author_id = 8149
+cf_key = os.environ.get("CF_AUTOMATION_KEY", "") # NAUJA EILUTĖ
 
 if wp_user and wp_pass:
     print("Kuriamas informacinis įrašas Bernardinai.lt svetainėje...")
@@ -900,6 +901,7 @@ if wp_user and wp_pass:
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
             " (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         ),
+        "X-Bnd-Automate": cf_key, # NAUJA EILUTĖ
     }
 
     featured_media_id = None
