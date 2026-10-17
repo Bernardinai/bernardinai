@@ -228,8 +228,38 @@ def apdoroti_straipsni(entry, is_main=True):
         if hasattr(entry, "source") and hasattr(entry.source, "title"):
             saltinis = entry.source.title
 
-    # 1 PATAISYMAS: patikimesnis autoriaus paėmimas iš RSS
-    autorius = getattr(entry, "author", "") or getattr(entry, "creator", "") or "Bernardinai.lt"
+    # Tikslus autoriaus (-ių) nustatymas su taisyklinga lietuviška skyryba
+    autorius = ""
+    if hasattr(entry, "authors") and entry.authors:
+        names = [a.get("name", "").strip() for a in entry.authors if isinstance(a, dict) and a.get("name")]
+        names = [n for n in names if n.lower() not in ["admin", "bernardinai.lt", "redakcija"]]
+        if len(names) == 1:
+            autorius = names[0]
+        elif len(names) == 2:
+            autorius = f"{names[0]} ir {names[1]}"
+        elif len(names) > 2:
+            autorius = ", ".join(names[:-1]) + f" ir {names[-1]}"
+
+    if not autorius:
+        raw_author = (
+            getattr(entry, "author", "")
+            or getattr(entry, "creator", "")
+            or getattr(entry, "dc_creator", "")
+            or ""
+        ).strip()
+        if raw_author.lower() not in ["admin", "bernardinai.lt", "redakcija"]:
+            parts = [p.strip() for p in raw_author.split(",") if p.strip()]
+            if len(parts) == 1:
+                autorius = parts[0]
+            elif len(parts) == 2:
+                autorius = f"{parts[0]} ir {parts[1]}"
+            elif len(parts) > 2:
+                autorius = ", ".join(parts[:-1]) + f" ir {parts[-1]}"
+            else:
+                autorius = raw_author
+
+    if not autorius:
+        autorius = "Bernardinai.lt"
     aprasymas = getattr(entry, "description", "")
 
     izanga_clean = re.sub("<[^<]+>", "", aprasymas)
@@ -505,7 +535,8 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
 """
 
 for i, straipsnis in enumerate(pagrindiniai_straipsniai):
-    html_kodas += f"""<li class="toc-item"><a href="#pagrindinis_{i}" class="toc-link"><strong>{straipsnis['title']}</strong></a></li>"""
+    autoriaus_span = f'<span class="toc-author" style="text-transform: uppercase;">{straipsnis["author"]}. </span>' if straipsnis["author"] else ""
+    html_kodas += f"""<li class="toc-item"><a href="#pagrindinis_{i}" class="toc-link">{autoriaus_span}<strong>{straipsnis['title']}</strong></a></li>"""
 
 if kiti_straipsniai:
     html_kodas += """
@@ -514,7 +545,8 @@ if kiti_straipsniai:
         <ul class="toc-list">
 """
     for i, straipsnis in enumerate(kiti_straipsniai):
-        html_kodas += f"""<li class="toc-item"><a href="#kitas_{i}" class="toc-link"><strong>{straipsnis['title']}</strong></a></li>"""
+        autoriaus_span = f'<span class="toc-author" style="text-transform: uppercase;">{straipsnis["author"]}. </span>' if straipsnis["author"] else ""
+        html_kodas += f"""<li class="toc-item"><a href="#kitas_{i}" class="toc-link">{autoriaus_span}<strong>{straipsnis['title']}</strong></a></li>"""
 
 html_kodas += f"""
         </ul>
@@ -534,7 +566,7 @@ for i, straipsnis in enumerate(pagrindiniai_straipsniai):
         <div class="article-top-block">
             <div class="article-header">
                 <div class="article-title">{straipsnis['title']}</div>
-                <div class="article-meta"><strong>{straipsnis['author']}</strong> &nbsp;|&nbsp; <strong>Bernardinai.lt</strong> &nbsp;|&nbsp; Publikuota: {straipsnis['date']}</div>
+                <div class="article-meta"><strong>{straipsnis['author']}</strong>. <strong>Bernardinai.lt</strong>. Publikuota: {straipsnis['date']}</div>
             </div>
             {f'<img src="{straipsnis["image"]}" class="article-image">' if straipsnis['image'] else ''}
         </div>
@@ -563,7 +595,7 @@ if kiti_straipsniai:
             <div class="other-article" id="kitas_{i}">
                 <div class="other-article-top-block">
                     <div class="other-article-title">{straipsnis['title']}</div>
-                    <div class="other-article-meta"><strong>{straipsnis['author']}</strong> &nbsp;|&nbsp; <strong>Bernardinai.lt</strong> &nbsp;|&nbsp; Publikuota: {straipsnis['date']}</div>
+                    <div class="other-article-meta"><strong>{straipsnis['author']}</strong>. <strong>Bernardinai.lt</strong>. Publikuota: {straipsnis['date']}</div>
                 </div>
                 {straipsnis['content']}
                 """
@@ -741,7 +773,7 @@ if api_key:
         <div style="margin-bottom: 40px; padding-bottom: 20px; border-bottom: 1px solid #eee;">
             {f'<img src="{straipsnis["image"]}" style="width: 100%; max-width: 600px; border-radius: 8px; margin-bottom: 15px;">' if straipsnis['image'] else ''}
             <h3 style="margin: 0 0 10px 0;"><a href="{straipsnis['link']}" style="color: #111; text-decoration: none; font-size: 20px;">{straipsnis['title']}</a></h3>
-            <div style="color: {THEME_COLOR}; font-size: 12px; font-weight: bold; margin-bottom: 10px; text-transform: uppercase;">{straipsnis['author']} | Bernardinai.lt | Publikuota: {straipsnis['date']}</div>
+            <div style="color: {THEME_COLOR}; font-size: 12px; font-weight: bold; margin-bottom: 10px; text-transform: uppercase;">{straipsnis['author']}. Bernardinai.lt. Publikuota: {straipsnis['date']}</div>
             <p style="color: #555; font-size: 15px; line-height: 1.5; margin: 0;">{straipsnis['excerpt']}</p>
         </div>
         """
@@ -757,7 +789,7 @@ if api_key:
             <div style="margin-bottom: 40px; padding-bottom: 20px; border-bottom: 1px solid #eee;">
                 {f'<img src="{straipsnis["image"]}" style="width: 100%; max-width: 600px; border-radius: 8px; margin-bottom: 15px;">' if straipsnis['image'] else ''}
                 <h3 style="margin: 0 0 10px 0;"><a href="{straipsnis['link']}" style="color: #111; text-decoration: none; font-size: 20px;">{straipsnis['title']}</a></h3>
-                <div style="color: {THEME_COLOR}; font-size: 12px; font-weight: bold; margin-bottom: 10px; text-transform: uppercase;">{straipsnis['author']} | Bernardinai.lt | Publikuota: {straipsnis['date']}</div>
+                <div style="color: {THEME_COLOR}; font-size: 12px; font-weight: bold; margin-bottom: 10px; text-transform: uppercase;">{straipsnis['author']}. Bernardinai.lt. Publikuota: {straipsnis['date']}</div>
                 <p style="color: #555; font-size: 15px; line-height: 1.5; margin: 0;">{straipsnis['excerpt']}</p>
             </div>
             """
