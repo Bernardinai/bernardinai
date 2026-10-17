@@ -48,6 +48,7 @@ jobs:
           FTP_SERVER: ${{ secrets.FTP_SERVER }}
           FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
           FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          CF_AUTOMATION_KEY: ${{ secrets.CF_AUTOMATION_KEY }} # NAUJA EILUTĖ RELIGIJOS SKRIPTUI
         run: python naujienlaiskis_religija.py
 
       - name: 6. Issaugomas archyvas repozitorijoje
