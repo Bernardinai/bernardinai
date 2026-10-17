@@ -523,8 +523,9 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
 """
 
 for i, straipsnis in enumerate(pagrindiniai_straipsniai):
-    autoriaus_span = f'<span class="toc-author">({straipsnis["author"]})</span>' if straipsnis["author"] else ""
-    html_kodas += f"""<li class="toc-item"><a href="#pagrindinis_{i}" class="toc-link"><strong>{straipsnis['title']}</strong>{autoriaus_span}</a></li>"""
+    # Autorius rodomas prieš pavadinimą didžiosiomis raidėmis ir su tašku
+    autoriaus_span = f'<span class="toc-author" style="text-transform: uppercase;">{straipsnis["author"]}. </span>' if straipsnis["author"] else ""
+    html_kodas += f"""<li class="toc-item"><a href="#pagrindinis_{i}" class="toc-link">{autoriaus_span}<strong>{straipsnis['title']}</strong></a></li>"""
 
 if kiti_straipsniai:
     html_kodas += """
@@ -533,8 +534,9 @@ if kiti_straipsniai:
         <ul class="toc-list">
 """
     for i, straipsnis in enumerate(kiti_straipsniai):
-        autoriaus_span = f'<span class="toc-author">({straipsnis["author"]})</span>' if straipsnis["author"] else ""
-        html_kodas += f"""<li class="toc-item"><a href="#kitas_{i}" class="toc-link"><strong>{straipsnis['title']}</strong>{autoriaus_span}</a></li>"""
+        # Autorius rodomas prieš pavadinimą didžiosiomis raidėmis ir su tašku
+        autoriaus_span = f'<span class="toc-author" style="text-transform: uppercase;">{straipsnis["author"]}. </span>' if straipsnis["author"] else ""
+        html_kodas += f"""<li class="toc-item"><a href="#kitas_{i}" class="toc-link">{autoriaus_span}<strong>{straipsnis['title']}</strong></a></li>"""
 
 html_kodas += f"""
         </ul>
