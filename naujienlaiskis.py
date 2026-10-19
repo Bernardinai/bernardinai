@@ -165,7 +165,7 @@ def isvalyti_img_url(url):
     return url
 
 
-# --- SAUGUS REKLAMŲ MODULIO ĮKĖLIMAS IŠ ATSIKRO FAILO reklamos.py ---
+# --- SAUGUS REKLAMŲ MODULIO ĮKĖLIMAS IŠ ATSKIRO FAILO reklamos.py ---
 try:
     from reklamos import gauti_reklamos_bloka
 except Exception as e:
@@ -219,7 +219,7 @@ def apdoroti_straipsni(entry, is_main=True):
             f"{pub_date_obj.year} m. {menesiai[pub_date_obj.month - 1]}"
             f" {pub_date_obj.day} d."
         )
-    except:
+    except Exception:
         pub_date_obj = datetime.datetime.now()
         data_lt = "Data nežinoma"
 
@@ -228,7 +228,6 @@ def apdoroti_straipsni(entry, is_main=True):
         if hasattr(entry, "source") and hasattr(entry.source, "title"):
             saltinis = entry.source.title
 
-    # Tikslus autoriaus (-ių) nustatymas su taisyklinga lietuviška skyryba
     autorius = ""
     if hasattr(entry, "authors") and entry.authors:
         names = [a.get("name", "").strip() for a in entry.authors if isinstance(a, dict) and a.get("name")]
@@ -679,8 +678,7 @@ except Exception as e:
     sys.exit(1)
 
 # =========================================================================
-# NAUJAS ŽINGSNIS: FTP ĮKĖLIMAS TIESIAI IŠ PYTHON.
-# Jei šis žingsnis nepavyks, programa bus nutraukta ir laiškai neišsiųsti!
+# FTP ĮKĖLIMAS TIESIAI IŠ PYTHON
 # =========================================================================
 if is_real_run:
     ftp_server = os.environ.get("FTP_SERVER")
@@ -692,18 +690,15 @@ if is_real_run:
         try:
             import ftplib
             
-            # Prisijungiame prie standartinio FTP (prievadas 21)
             ftp = ftplib.FTP(ftp_server)
             ftp.login(user=ftp_user, passwd=ftp_pass)
             
-            # Patikriname, ar serveryje yra šių metų aplankas, jei ne – sukuriame
             try:
                 ftp.cwd(str(current_year))
             except ftplib.error_perm:
                 ftp.mkd(str(current_year))
                 ftp.cwd(str(current_year))
                 
-            # Įkeliame patį failą
             filename = os.path.basename(pdf_archyvas)
             with open(pdf_archyvas, "rb") as file:
                 ftp.storbinary(f"STOR {filename}", file)
@@ -783,7 +778,6 @@ if api_key:
         <h2 style="color: {THEME_COLOR}; border-bottom: 2px solid {THEME_COLOR}; padding-bottom: 10px; margin-top: 40px;">Kiti savaitės tekstai</h2>
         <p style="color: #666; font-size: 13px; font-style: italic; margin-bottom: 20px;">Čia rasite Bernardinai.lt redaktorių ir žurnalistų atrinktus svarbiausius savaitės tekstus ir interviu.</p>
         """
-        # 2 PATAISYMAS: įkelta {straipsnis['author']} | Bernardinai.lt | prie kitų tekstų el. laiške
         for straipsnis in kiti_straipsniai:
             email_html += f"""
             <div style="margin-bottom: 40px; padding-bottom: 20px; border-bottom: 1px solid #eee;">
@@ -817,7 +811,7 @@ if api_key:
         "from": "naujienlaiskis@bernardinai.lt",
         "from_name": "Bernardinai.lt kultūros savaitraštis",
         "language": "lt",
-        "google_analytics": f"kulturos-savaitrastis-{today_str}",  # GA UTM kampanijos žyma
+        "google_analytics": f"kulturos-savaitrastis-{today_str}",
     }
 
     req_campaign = urllib.request.Request(
@@ -907,11 +901,57 @@ else:
         ">>> MAILERLITE_API_KEY nerastas aplinkoje. Juodraštis nekuriamas."
     )
 
+# =========================================================================
+# WORDPRESS PUBLIKAVIMAS SU PILNAIS ACF LAUKAIS IR ŽYMA
+# =========================================================================
 wp_user = os.environ.get("WP_USERNAME")
 wp_pass = os.environ.get("WP_APP_PASSWORD")
 wp_category = int(os.environ.get("WP_CATEGORY_ID", 18))
 wp_acf_author_id = 8149
-cf_key = os.environ.get("CF_AUTOMATION_KEY", "") # NAUJA EILUTĖ
+cf_key = os.environ.get("CF_AUTOMATION_KEY", "")
+
+
+def gauti_arba_sukurti_zyma(tag_name, headers):
+    """Suranda esamą žymos ID pagal pavadinimą arba sukuria naują."""
+    encoded_name = urllib.parse.quote(tag_name)
+    url = f"https://www.bernardinai.lt/wp-json/wp/v2/tags?search={encoded_name}&per_page=50"
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req) as resp:
+            tags = json.loads(resp.read().decode("utf-8"))
+            for t in tags:
+                if t.get("name", "").strip().lower() == tag_name.strip().lower():
+                    print(f">>> Rasta žyma '{tag_name}' (ID: {t['id']})")
+                    return t["id"]
+    except Exception as e:
+        print(f">>> Įspėjimas ieškant žymos '{tag_name}': {e}")
+
+    try:
+        create_url = "https://www.bernardinai.lt/wp-json/wp/v2/tags"
+        payload = json.dumps({"name": tag_name}).encode("utf-8")
+        h = headers.copy()
+        h["Content-Type"] = "application/json; charset=utf-8"
+        req = urllib.request.Request(create_url, data=payload, headers=h, method="POST")
+        with urllib.request.urlopen(req) as resp:
+            new_tag = json.loads(resp.read().decode("utf-8"))
+            print(f">>> Sukurta nauja žyma '{tag_name}' (ID: {new_tag['id']})")
+            return new_tag["id"]
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode("utf-8")
+        try:
+            err_json = json.loads(err_body)
+            if err_json.get("code") == "term_exists":
+                term_id = err_json.get("data", {}).get("term_id")
+                if term_id:
+                    print(f">>> Žyma '{tag_name}' jau egzistuoja (ID: {term_id})")
+                    return int(term_id)
+        except Exception:
+            pass
+        print(f">>> Nepavyko sukurti žymos '{tag_name}': {err_body}")
+    except Exception as e:
+        print(f">>> Nepavyko sukurti žymos '{tag_name}': {e}")
+    return None
+
 
 if wp_user and wp_pass:
     print("Kuriamas informacinis įrašas Bernardinai.lt svetainėje...")
@@ -933,9 +973,13 @@ if wp_user and wp_pass:
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
             " (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         ),
-        "X-Bnd-Automate": cf_key, # NAUJA EILUTĖ
+        "X-Bnd-Automate": cf_key,
     }
 
+    # 1. Gauname žymos „Bernardinai.lt kultūros savaitraštis“ ID
+    tag_id = gauti_arba_sukurti_zyma("Bernardinai.lt kultūros savaitraštis", wp_headers)
+
+    # 2. Parsiunčiame ir įkeliame titulinę nuotrauką
     featured_media_id = None
     if cover_bg_image and cover_bg_image.startswith("http"):
         try:
@@ -945,16 +989,20 @@ if wp_user and wp_pass:
 
             print(f"Atsisiunčiama viršelio nuotrauka iš: {svara_img_url}")
 
+            img_headers = {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+                    " AppleWebKit/537.36 (KHTML, like Gecko)"
+                    " Chrome/122.0.0.0 Safari/537.36"
+                ),
+                "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+            }
+            if cf_key:
+                img_headers["X-Bnd-Automate"] = cf_key
+
             img_req = urllib.request.Request(
                 svara_img_url,
-                headers={
-                    "User-Agent": (
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-                        " AppleWebKit/537.36 (KHTML, like Gecko)"
-                        " Chrome/122.0.0.0 Safari/537.36"
-                    ),
-                    "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
-                },
+                headers=img_headers,
             )
             with urllib.request.urlopen(img_req) as resp:
                 image_data = resp.read()
@@ -1028,8 +1076,13 @@ if wp_user and wp_pass:
         "acf": {
             "short_description": trumpa_istrauka,
             "author": [wp_acf_author_id],
+            "show_on_homepage": "yes",      # 12 laukas: yes : Rodyti ("Redakcija rekomenduoja")
+            "post_featured_image": "1",     # 22 laukas: 1 : Rodyti (Asociatyvios nuotraukos rodymas straipsnyje)
         },
     }
+
+    if tag_id:
+        payload_wp["tags"] = [int(tag_id)]
 
     if featured_media_id:
         payload_wp["featured_media"] = int(featured_media_id)
