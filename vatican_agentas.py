@@ -84,7 +84,7 @@ def istraukti_vatikano_straipsni(url):
     paragraphs = []
     
     # Vatican News straipsnio teksto blokas
-    content_ blocks = soup.select("div.article__text, div.section--evidence .section__content")
+    content_blocks = soup.select("div.article__text, div.section--evidence .section__content")
     if not content_blocks:
         content_blocks = soup.select("article")
 
