@@ -1,0 +1,53 @@
+name: Vatican News Agentas
+
+on:
+  schedule:
+    # Vykdoma kas 5 minutes visą parą
+    - cron: '*/5 * * * *'
+  workflow_dispatch: # Leidžia paleisti rankiniu būdu testavimui!
+    inputs:
+      statusas:
+        description: 'Kaip įkelti straipsnius? (draft - tik juodraštis patikrinimui, publish - publikuoti iškart)'
+        required: true
+        default: 'draft'
+        type: choice
+        options:
+          - draft
+          - publish
+
+permissions:
+  contents: write
+
+jobs:
+  importuoti-naujienas:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Atsisiųsti repozitorijos failus
+        uses: actions/checkout@v4
+
+      - name: Paruošti Python aplinką
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Įdiegti reikalingas bibliotekas
+        run: |
+          pip install feedparser beautifulsoup4
+
+      - name: Paleisti Vatican News agentą
+        env:
+          WP_USERNAME: ${{ secrets.WP_USERNAME }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          CF_AUTOMATION_KEY: ${{ secrets.CF_AUTOMATION_KEY }}
+          WP_PUBLISH_STATUS: ${{ github.event.inputs.statusas || 'publish' }}
+        run: |
+          python vatican_agentas.py
+
+      - name: Išsaugoti publikuotų straipsnių sąrašą (kad nesidubliuotų)
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          if [ -f vatican_publikuota.txt ]; then
+            git add vatican_publikuota.txt
+            git diff --staged --quiet || (git commit -m "Atnaujintas Vatican News publikuotų straipsnių sąrašas" && git pull --rebase && git push)
+          fi
