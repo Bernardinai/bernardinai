@@ -523,7 +523,6 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
 """
 
 for i, straipsnis in enumerate(pagrindiniai_straipsniai):
-    # Autorius rodomas prieš pavadinimą didžiosiomis raidėmis ir su tašku
     autoriaus_span = f'<span class="toc-author" style="text-transform: uppercase;">{straipsnis["author"]}. </span>' if straipsnis["author"] else ""
     html_kodas += f"""<li class="toc-item"><a href="#pagrindinis_{i}" class="toc-link">{autoriaus_span}<strong>{straipsnis['title']}</strong></a></li>"""
 
@@ -534,7 +533,6 @@ if kiti_straipsniai:
         <ul class="toc-list">
 """
     for i, straipsnis in enumerate(kiti_straipsniai):
-        # Autorius rodomas prieš pavadinimą didžiosiomis raidėmis ir su tašku
         autoriaus_span = f'<span class="toc-author" style="text-transform: uppercase;">{straipsnis["author"]}. </span>' if straipsnis["author"] else ""
         html_kodas += f"""<li class="toc-item"><a href="#kitas_{i}" class="toc-link">{autoriaus_span}<strong>{straipsnis['title']}</strong></a></li>"""
 
@@ -931,11 +929,60 @@ else:
         ">>> MAILERLITE_API_KEY nerastas aplinkoje. Juodraštis nekuriamas."
     )
 
+# =========================================================================
+# WORDPRESS PUBLIKAVIMAS SU PILNAIS ACF LAUKAIS IR ŽYMA
+# =========================================================================
 wp_user = os.environ.get("WP_USERNAME")
 wp_pass = os.environ.get("WP_APP_PASSWORD")
 wp_category = int(os.environ.get("WP_CATEGORY_ID_RELIGIJA", 65204))
 wp_acf_author_id = 8149
-cf_key = os.environ.get("CF_AUTOMATION_KEY", "") # NAUJA EILUTĖ
+cf_key = os.environ.get("CF_AUTOMATION_KEY", "")
+
+# Žymos pavadinimas šiam savaitraščiui
+ZYMOS_PAVADINIMAS = "Bernardinai.lt religijos naujienų ir tikėjimo savaitraštis"
+
+
+def gauti_arba_sukurti_zyma(tag_name, headers):
+    """Suranda esamą žymos ID pagal pavadinimą arba sukuria naują."""
+    encoded_name = urllib.parse.quote(tag_name)
+    url = f"https://www.bernardinai.lt/wp-json/wp/v2/tags?search={encoded_name}&per_page=50"
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req) as resp:
+            tags = json.loads(resp.read().decode("utf-8"))
+            for t in tags:
+                if t.get("name", "").strip().lower() == tag_name.strip().lower():
+                    print(f">>> Rasta žyma '{tag_name}' (ID: {t['id']})")
+                    return t["id"]
+    except Exception as e:
+        print(f">>> Įspėjimas ieškant žymos '{tag_name}': {e}")
+
+    try:
+        create_url = "https://www.bernardinai.lt/wp-json/wp/v2/tags"
+        payload = json.dumps({"name": tag_name}).encode("utf-8")
+        h = headers.copy()
+        h["Content-Type"] = "application/json; charset=utf-8"
+        req = urllib.request.Request(create_url, data=payload, headers=h, method="POST")
+        with urllib.request.urlopen(req) as resp:
+            new_tag = json.loads(resp.read().decode("utf-8"))
+            print(f">>> Sukurta nauja žyma '{tag_name}' (ID: {new_tag['id']})")
+            return new_tag["id"]
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode("utf-8")
+        try:
+            err_json = json.loads(err_body)
+            if err_json.get("code") == "term_exists":
+                term_id = err_json.get("data", {}).get("term_id")
+                if term_id:
+                    print(f">>> Žyma '{tag_name}' jau egzistuoja (ID: {term_id})")
+                    return int(term_id)
+        except Exception:
+            pass
+        print(f">>> Nepavyko sukurti žymos '{tag_name}': {err_body}")
+    except Exception as e:
+        print(f">>> Nepavyko sukurti žymos '{tag_name}': {e}")
+    return None
+
 
 if wp_user and wp_pass:
     print("Kuriamas informacinis įrašas Bernardinai.lt svetainėje...")
@@ -957,9 +1004,13 @@ if wp_user and wp_pass:
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
             " (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         ),
-        "X-Bnd-Automate": cf_key, # NAUJA EILUTĖ
+        "X-Bnd-Automate": cf_key,
     }
 
+    # 1. Gauname žymos ID
+    tag_id = gauti_arba_sukurti_zyma(ZYMOS_PAVADINIMAS, wp_headers)
+
+    # 2. Parsiunčiame ir įkeliame titulinę nuotrauką
     featured_media_id = None
     if cover_bg_image and cover_bg_image.startswith("http"):
         try:
@@ -969,16 +1020,20 @@ if wp_user and wp_pass:
 
             print(f"Atsisiunčiama viršelio nuotrauka iš: {svara_img_url}")
 
+            img_headers = {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+                    " AppleWebKit/537.36 (KHTML, like Gecko)"
+                    " Chrome/122.0.0.0 Safari/537.36"
+                ),
+                "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+            }
+            if cf_key:
+                img_headers["X-Bnd-Automate"] = cf_key
+
             img_req = urllib.request.Request(
                 svara_img_url,
-                headers={
-                    "User-Agent": (
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-                        " AppleWebKit/537.36 (KHTML, like Gecko)"
-                        " Chrome/122.0.0.0 Safari/537.36"
-                    ),
-                    "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
-                },
+                headers=img_headers,
             )
             with urllib.request.urlopen(img_req) as resp:
                 image_data = resp.read()
@@ -1052,8 +1107,13 @@ if wp_user and wp_pass:
         "acf": {
             "short_description": trumpa_istrauka,
             "author": [wp_acf_author_id],
+            "show_on_homepage": "yes",      # 12 laukas: yes : Rodyti ("Redakcija rekomenduoja")
+            "post_featured_image": "1",     # 22 laukas: 1 : Rodyti (Asociatyvios nuotraukos rodymas straipsnyje)
         },
     }
+
+    if tag_id:
+        payload_wp["tags"] = [int(tag_id)]
 
     if featured_media_id:
         payload_wp["featured_media"] = int(featured_media_id)
