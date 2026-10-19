@@ -259,13 +259,14 @@ def main():
                 "content": galutinis_html,
                 "excerpt": trumpa_istrauka,
                 "status": PUBLISH_STATUS,
-                "categories": [WP_CATEGORY_ID],      # 24: Bažnyčia pasaulyje
+                "categories": [WP_CATEGORY_ID],            # 24: Bažnyčia pasaulyje
                 "tags": tag_ids,
                 "acf": {
                     "short_description": trumpa_istrauka,
-                    "author": [WP_ACF_AUTHOR_ID],    # 858006: Vatican News
-                    "post_featured_image": "1",      # 1: Rodyti asociatyvią nuotrauką straipsnio viduje
-                    "show_on_homepage": "no",        # Nerodyti „Redakcija rekomenduoja“
+                    "author": [WP_ACF_AUTHOR_ID],          # 858006: Vatican News
+                    "post_featured_image": "1",            # 1: Rodyti asociatyvią nuotrauką straipsnio viduje
+                    "show_in_newest_posts": "yes",         # 13 laukas: yes : Rodyti Naujienose (agentūrų žinutės)
+                    "show_on_homepage": "no",              # 12 laukas: no : Nerodyti „Redakcija rekomenduoja“
                 },
             }
 
