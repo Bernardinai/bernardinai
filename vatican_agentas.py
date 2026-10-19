@@ -40,11 +40,11 @@ def issaugoti_publikuota(url):
 
 def sutrumpinti_iki_140(tekstas):
     """Sutrumpina ištrauką iki 140 simbolių neperpjaunant žodžio pusiau."""
-    švarus = re.sub(r"<[^>]+>", "", tekstas).strip()
-    švarus = re.sub(r"\s+", " ", švarus)
-    if len(švarus) <= 140:
-        return švarus
-    apkarpytas = švarus[:137]
+    svarus = re.sub(r"<[^>]+>", "", tekstas).strip()
+    svarus = re.sub(r"\s+", " ", svarus)
+    if len(svarus) <= 140:
+        return svarus
+    apkarpytas = svarus[:137]
     if " " in apkarpytas:
         apkarpytas = apkarpytas.rsplit(" ", 1)[0]
     return apkarpytas + "..."
@@ -97,11 +97,9 @@ def istraukti_vatikano_straipsni(url):
             text_check = elem.get_text(strip=True)
             if not text_check:
                 continue
-            # Praleidžiame technines nuorodas, jei jos tuščios
             if text_check.lower().startswith("taip pat skaitykite"):
                 continue
 
-            # Išsaugome autentišką pastraipos tekstą (su paryškinimais ar kursyvais, jei yra)
             inner_html = "".join(str(child) for child in elem.contents).strip()
             paragraphs.append(f"<{elem.name}>{inner_html}</{elem.name}>")
 
@@ -236,17 +234,14 @@ def main():
         try:
             pilnas_html, ivadas, img_url = istraukti_vatikano_straipsni(link)
 
-            # Jei straipsnyje mažai teksto (pvz., tik audio įrašas), naudojame RSS aprašymą
             if not pilnas_html or len(pilnas_html) < 100:
                 pilnas_html = f"<p>{rss_desc}</p>"
 
-            # Jei puslapio įvadas dubliuojasi arba nerastas, imame iš RSS
             istraukos_saltinis = ivadas if ivadas else rss_desc
             if not istraukos_saltinis:
                 istraukos_saltinis = pilnas_html
             trumpa_istrauka = sutrumpinti_iki_140(istraukos_saltinis)
 
-            # Jei įvadas (lead) nėra įtrauktas į patį straipsnio tekstą, pridedame jį pradžioje paryškintai
             if ivadas and ivadas[:40] not in pilnas_html:
                 pilnas_html = f"<p><strong>{ivadas}</strong></p>\n" + pilnas_html
 
@@ -270,7 +265,7 @@ def main():
                     "short_description": trumpa_istrauka,
                     "author": [WP_ACF_AUTHOR_ID],    # 858006: Vatican News
                     "post_featured_image": "1",      # 1: Rodyti asociatyvią nuotrauką straipsnio viduje
-                    "show_on_homepage": "no",        # Nerodyti „Redakcija rekomenduoja“ (galite pakeisti į "yes")
+                    "show_on_homepage": "no",        # Nerodyti „Redakcija rekomenduoja“
                 },
             }
 
