@@ -1,4 +1,6 @@
 import base64
+import datetime
+from datetime import timedelta, timezone
 import json
 import os
 import re
@@ -11,7 +13,9 @@ from bs4 import BeautifulSoup
 # --- KONFIGŪRACIJA ---
 VATICAN_RSS_URL = "https://www.vaticannews.va/lt.rss.xml"
 TRACKER_FILE = "vatican_publikuota.txt"
-MAX_ARTICLES_PER_RUN = 5  # Kiek daugiausia naujų straipsnių įkelti vieno paleidimo metu
+MAX_FEED_ITEMS_TO_CHECK = 5    # Tikriname tik 5 pačius naujausius RSS įrašus
+MAX_AGE_HOURS = 24             # Neimame straipsnių, senesnių nei 24 valandos
+MAX_ARTICLES_PER_RUN = 5       # Kiek daugiausia naujų straipsnių įkelti vieno paleidimo metu
 
 # WordPress prisijungimai iš aplinkos kintamųjų (GitHub Secrets)
 WP_USER = os.environ.get("WP_USERNAME", "")
@@ -74,22 +78,19 @@ def istraukti_vatikano_straipsni(url):
         if img_url.startswith("/"):
             img_url = "https://www.vaticannews.va" + img_url
 
-    # 2. Įvadas / paantraštė (dažnai būna po antrašte arba meta description)
+    # 2. Įvadas / paantraštė
     ivadas = ""
     og_desc = soup.find("meta", property="og:description")
     if og_desc and og_desc.get("content"):
         ivadas = og_desc["content"].strip()
 
-    # 3. Autentiškas straipsnio tekstas (be jokių pakeitimų)
+    # 3. Autentiškas straipsnio tekstas
     paragraphs = []
-    
-    # Vatican News straipsnio teksto blokas
     content_blocks = soup.select("div.article__text, div.section--evidence .section__content")
     if not content_blocks:
         content_blocks = soup.select("article")
 
     for block in content_blocks:
-        # Pašaliname vidinius audio grotuvus ar „Taip pat skaitykite“ blokus, jei tokių yra
         for unwanted in block.select("script, style, .audio-player, .related-articles, figure"):
             unwanted.decompose()
 
@@ -217,9 +218,12 @@ def main():
         print("RSS srautas tuščias arba nepasiekiamas.")
         return
 
+    # Paimame tik 5 pačius naujausius įrašus iš RSS srauto viršaus
+    naujausi_irasai = feed.entries[:MAX_FEED_ITEMS_TO_CHECK]
+    laiko_riba = datetime.datetime.now(timezone.utc) - timedelta(hours=MAX_AGE_HOURS)
+
     ikeltu_skaicius = 0
-    # Einame nuo senesnių link naujesnių, kad išlaikytume chronologiją
-    for idx, entry in enumerate(reversed(feed.entries)):
+    for idx, entry in enumerate(reversed(naujausi_irasai)):
         if ikeltu_skaicius >= MAX_ARTICLES_PER_RUN:
             break
 
@@ -229,6 +233,13 @@ def main():
 
         if not link or link in publikuoti_url:
             continue
+
+        # Patikriname straipsnio publikavimo datą (kad nebūtų senesnis nei 24 val.)
+        if hasattr(entry, "published_parsed") and entry.published_parsed:
+            pub_dt = datetime.datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
+            if pub_dt < laiko_riba:
+                print(f"Praleidžiamas senas straipsnis ({pub_dt.strftime('%Y-%m-%d %H:%M')}): {title}")
+                continue
 
         print(f"\n>>> Ruošiamas straipsnis: {title}")
         try:
@@ -245,7 +256,7 @@ def main():
             if ivadas and ivadas[:40] not in pilnas_html:
                 pilnas_html = f"<p><strong>{ivadas}</strong></p>\n" + pilnas_html
 
-            # PRIVALOMA DO-FOLLOW NUORODA IR ŠALTINIS PABAIGOJE (be jokių rel="nofollow")
+            # PRIVALOMA DO-FOLLOW NUORODA IR ŠALTINIS PABAIGOJE
             saltinio_blokas = (
                 f'\n<p><strong>Šaltinis: <a href="{link}">Vatican News</a></strong></p>'
             )
