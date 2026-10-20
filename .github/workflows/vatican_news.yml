@@ -1,13 +1,12 @@
 name: Vatican News Agentas
 
 on:
-  schedule:
-    # Vykdoma kas 5 minutes visą parą
-    - cron: '*/5 * * * *'
-  workflow_dispatch: # Leidžia paleisti rankiniu būdu testavimui!
+  repository_dispatch:
+    types: [paleisti_vatican]
+  workflow_dispatch:
     inputs:
       statusas:
-        description: 'Kaip įkelti straipsnius? (draft - tik juodraštis patikrinimui, publish - publikuoti iškart)'
+        description: 'Kaip įkelti straipsnius? (draft - juodraštis, publish - publikuoti iškart)'
         required: true
         default: 'draft'
         type: choice
@@ -43,7 +42,7 @@ jobs:
         run: |
           python vatican_agentas.py
 
-      - name: Išsaugoti publikuotų straipsnių sąrašą (kad nesidubliuotų)
+      - name: Išsaugoti publikuotų straipsnių sąrašą
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
