@@ -25,7 +25,7 @@ CF_KEY = os.environ.get("CF_AUTOMATION_KEY", "")
 # Tikslūs Bernardinai.lt ID pagal jūsų nustatymus
 WP_CATEGORY_ID = 24            # Rubrika: „Bažnyčia pasaulyje“
 WP_ACF_AUTHOR_ID = 858006      # Autorius: „Vatican News“
-PUBLISH_STATUS = os.environ.get("WP_PUBLISH_STATUS", "publish")  # "publish" arba "draft"
+PUBLISH_STATUS = "draft"  # Visada įkelti kaip juodraštį patikrinimui
 
 feedparser.USER_AGENT = "Bernardinai-Vatican-Bot/1.0"
 
@@ -221,7 +221,7 @@ def main():
     wp_headers = {
         "Authorization": basic_val,
         "X-HTTP-Authorization": basic_val,
-        "REDIRECT_HTTP_AUTHORIZATION":Basic_val if False else basic_val,
+        "REDIRECT_HTTP_AUTHORIZATION": basic_val,
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36",
         "X-Bnd-Automate": CF_KEY,
     }
