@@ -42,20 +42,34 @@ def issaugoti_publikuota(url):
         f.write(f"{url}\n")
 
 
-def sutrumpinti_iki_140(tekstas):
-    """Sutrumpina ištrauką iki 140 simbolių neperpjaunant žodžio pusiau."""
+def formuoti_meta_iki_140(tekstas):
+    """Paruošia meta aprašymą iki 140 simbolių, teikiant pirmenybę pilnam baigtiniam sakiniui."""
     svarus = re.sub(r"<[^>]+>", "", tekstas).strip()
     svarus = re.sub(r"\s+", " ", svarus)
     if len(svarus) <= 140:
         return svarus
-    apkarpytas = svarus[:137]
+
+    kandidatas = svarus[:140]
+
+    # 1. Bandome rasti paskutinį baigtinį sakinį (tašką, šauktuką ar klaustuką)
+    sakinio_pabaigos = [m.end() for m in re.finditer(r'[.!?](?=\s|$)', kandidatas)]
+    if sakinio_pabaigos and sakinio_pabaigos[-1] >= 45:
+        return kandidatas[:sakinio_pabaigos[-1]].strip()
+
+    # 2. Jei pirmas sakinys ilgesnis nei 140 simbolių, bandome kirpti ties kableliu ar brūkšniu
+    skyrikliai = [m.start() for m in re.finditer(r'[,;–—](?=\s)', kandidatas)]
+    if skyrikliai and skyrikliai[-1] >= 65:
+        return kandidatas[:skyrikliai[-1]].strip() + "."
+
+    # 3. Atsarginis variantas: kerpame ties paskutiniu pilnu žodžiu ir dedame tašką
+    apkarpytas = svarus[:139]
     if " " in apkarpytas:
         apkarpytas = apkarpytas.rsplit(" ", 1)[0]
-    return apkarpytas + "..."
+    return apkarpytas.rstrip(".,;:-–— ") + "."
 
 
 def istraukti_vatikano_straipsni(url):
-    """Atsisiunčia originalų, nepakeistą Vatican News straipsnio tekstą, įvadą ir nuotrauką."""
+    """Atsisiunčia originalų, nepakeistą Vatican News straipsnio tekstą, pilną įvadą ir nuotrauką."""
     req = urllib.request.Request(
         url,
         headers={
@@ -78,24 +92,33 @@ def istraukti_vatikano_straipsni(url):
         if img_url.startswith("/"):
             img_url = "https://www.vaticannews.va" + img_url
 
-    # 2. Įvadas / paantraštė
-    ivadas = ""
-    og_desc = soup.find("meta", property="og:description")
-    if og_desc and og_desc.get("content"):
-        ivadas = og_desc["content"].strip()
+    # 2. PILNA įžanga (pirmiausia imame iš HTML paantraštės bloko, kur ji NĖRA apkarpyta)
+    pilnas_ivadas = ""
+    lead_elem = soup.select_one(
+        "div.article__subtitle, p.article__subtitle, h2.article__subtitle, .article__lead, .lead"
+    )
+    if lead_elem:
+        pilnas_ivadas = lead_elem.get_text(" ", strip=True)
 
-    # 3. Autentiškas straipsnio tekstas
+    if not pilnas_ivadas:
+        og_desc = soup.find("meta", property="og:description")
+        if og_desc and og_desc.get("content"):
+            pilnas_ivadas = og_desc["content"].strip()
+
+    # 3. Autentiškas straipsnio tekstas (be jokių nutraukimų)
     paragraphs = []
     content_blocks = soup.select("div.article__text, div.section--evidence .section__content")
     if not content_blocks:
         content_blocks = soup.select("article")
 
     for block in content_blocks:
-        for unwanted in block.select("script, style, .audio-player, .related-articles, figure"):
+        for unwanted in block.select(
+            "script, style, .audio-player, .related-articles, figure, .article__subtitle, .article__lead"
+        ):
             unwanted.decompose()
 
         for elem in block.find_all(["p", "h2", "h3", "blockquote"]):
-            text_check = elem.get_text(strip=True)
+            text_check = elem.get_text(" ", strip=True)
             if not text_check:
                 continue
             if text_check.lower().startswith("taip pat skaitykite"):
@@ -108,7 +131,7 @@ def istraukti_vatikano_straipsni(url):
             break
 
     pilnas_html = "\n".join(paragraphs)
-    return pilnas_html, ivadas, img_url
+    return pilnas_html, pilnas_ivadas, img_url
 
 
 def gauti_arba_sukurti_zyma(tag_name, headers):
@@ -198,7 +221,7 @@ def main():
     wp_headers = {
         "Authorization": basic_val,
         "X-HTTP-Authorization": basic_val,
-        "REDIRECT_HTTP_AUTHORIZATION": basic_val,
+        "REDIRECT_HTTP_AUTHORIZATION":Basic_val if False else basic_val,
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36",
         "X-Bnd-Automate": CF_KEY,
     }
@@ -218,7 +241,6 @@ def main():
         print("RSS srautas tuščias arba nepasiekiamas.")
         return
 
-    # Paimame tik 5 pačius naujausius įrašus iš RSS srauto viršaus
     naujausi_irasai = feed.entries[:MAX_FEED_ITEMS_TO_CHECK]
     laiko_riba = datetime.datetime.now(timezone.utc) - timedelta(hours=MAX_AGE_HOURS)
 
@@ -234,7 +256,6 @@ def main():
         if not link or link in publikuoti_url:
             continue
 
-        # Patikriname straipsnio publikavimo datą (kad nebūtų senesnis nei 24 val.)
         if hasattr(entry, "published_parsed") and entry.published_parsed:
             pub_dt = datetime.datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
             if pub_dt < laiko_riba:
@@ -243,18 +264,23 @@ def main():
 
         print(f"\n>>> Ruošiamas straipsnis: {title}")
         try:
-            pilnas_html, ivadas, img_url = istraukti_vatikano_straipsni(link)
+            pilnas_html, pilnas_ivadas, img_url = istraukti_vatikano_straipsni(link)
+
+            if not pilnas_ivadas:
+                pilnas_ivadas = re.sub(r"<[^>]+>", "", rss_desc).strip()
 
             if not pilnas_html or len(pilnas_html) < 100:
-                pilnas_html = f"<p>{rss_desc}</p>"
+                pilnas_html = f"<p>{pilnas_ivadas}</p>"
 
-            istraukos_saltinis = ivadas if ivadas else rss_desc
-            if not istraukos_saltinis:
-                istraukos_saltinis = pilnas_html
-            trumpa_istrauka = sutrumpinti_iki_140(istraukos_saltinis)
+            # 1. META APRAŠYMAS (ištraukai): iki 140 simbolių, baigtinis sakinys
+            meta_aprasymas_140 = formuoti_meta_iki_140(
+                pilnas_ivadas if pilnas_ivadas else pilnas_html
+            )
 
-            if ivadas and ivadas[:40] not in pilnas_html:
-                pilnas_html = f"<p><strong>{ivadas}</strong></p>\n" + pilnas_html
+            # 2. STRAIPSNIO TEKSTAS: įdedame 100% pilną įžangą be jokių nutraukimų
+            svarus_tekstas_patikrai = re.sub(r"<[^>]+>", "", pilnas_html).strip()
+            if pilnas_ivadas and pilnas_ivadas[:50] not in svarus_tekstas_patikrai:
+                pilnas_html = f"<p><strong>{pilnas_ivadas}</strong></p>\n" + pilnas_html
 
             # PRIVALOMA DO-FOLLOW NUORODA IR ŠALTINIS PABAIGOJE
             saltinio_blokas = (
@@ -268,16 +294,19 @@ def main():
             payload_wp = {
                 "title": title,
                 "content": galutinis_html,
-                "excerpt": trumpa_istrauka,
+                "excerpt": meta_aprasymas_140,                 # Standartinė WP ištrauka iki 140 simbolių
                 "status": PUBLISH_STATUS,
-                "categories": [WP_CATEGORY_ID],            # 24: Bažnyčia pasaulyje
+                "categories": [WP_CATEGORY_ID],                # 24: Bažnyčia pasaulyje
                 "tags": tag_ids,
+                "meta": {
+                    "_yoast_wpseo_metadesc": meta_aprasymas_140  # Yoast SEO meta aprašymas iki 140 simbolių
+                },
                 "acf": {
-                    "short_description": trumpa_istrauka,
-                    "author": [WP_ACF_AUTHOR_ID],          # 858006: Vatican News
-                    "post_featured_image": "1",            # 1: Rodyti asociatyvią nuotrauką straipsnio viduje
-                    "show_in_newest_posts": "yes",         # 13 laukas: yes : Rodyti Naujienose (agentūrų žinutės)
-                    "show_on_homepage": "no",              # 12 laukas: no : Nerodyti „Redakcija rekomenduoja“
+                    "short_description": meta_aprasymas_140,   # Trumpas aprašymas kortelėms (iki 140 simbolių, baigtinis sakinys)
+                    "author": [WP_ACF_AUTHOR_ID],              # 858006: Vatican News
+                    "post_featured_image": "1",                # 1: Rodyti asociatyvią nuotrauką straipsnio viduje
+                    "show_in_newest_posts": "yes",             # 13 laukas: yes : Rodyti Naujienose
+                    "show_on_homepage": "no",                  # 12 laukas: no : Nerodyti „Redakcija rekomenduoja“
                 },
             }
 
@@ -297,6 +326,7 @@ def main():
             with urllib.request.urlopen(req_wp) as resp_wp:
                 wp_data = json.loads(resp_wp.read().decode("utf-8"))
                 print(f">>> Sėkmingai publikuota: {wp_data.get('link')}")
+                print(f"    Meta ištrauka ({len(meta_aprasymas_140)} simb.): {meta_aprasymas_140}")
                 issaugoti_publikuota(link)
                 ikeltu_skaicius += 1
 
