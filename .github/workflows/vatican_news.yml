@@ -38,7 +38,7 @@ jobs:
           WP_USERNAME: ${{ secrets.WP_USERNAME }}
           WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
           CF_AUTOMATION_KEY: ${{ secrets.CF_AUTOMATION_KEY }}
-          WP_PUBLISH_STATUS: ${{ github.event.inputs.statusas || 'publish' }}
+          WP_PUBLISH_STATUS: ${{ github.event.inputs.statusas || 'draft' }}
         run: |
           python vatican_agentas.py
 
