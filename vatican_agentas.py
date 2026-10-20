@@ -350,11 +350,8 @@ def main():
       ):
         pilnas_html = f"<p>{pilnas_ivadas}</p>\n" + pilnas_html
 
-      # PRIVALOMA DO-FOLLOW NUORODA IR ŠALTINIS PABAIGOJE
-      saltinio_blokas = (
-          f'\n<p><strong>Šaltinis: <a href="{link}">Vatican'
-          " News</a></strong></p>"
-      )
+      # PRIVALOMA DO-FOLLOW NUORODA PABAIGOJE
+      saltinio_blokas = f'\n<p><a href="{link}">{link}</a></p>'
       galutinis_html = pilnas_html + saltinio_blokas
 
       # Įkeliame nuotrauką į WordPress
