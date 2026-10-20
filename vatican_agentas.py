@@ -24,7 +24,8 @@ CF_KEY = os.environ.get("CF_AUTOMATION_KEY", "")
 
 # Tikslūs Bernardinai.lt ID pagal jūsų nustatymus
 WP_CATEGORY_ID = 24            # Rubrika: „Bažnyčia pasaulyje“
-WP_ACF_AUTHOR_ID = 858006      # Autorius: „Vatican News“
+WP_ACF_AUTHOR_IDS = [858006, 8149]  # Autoriai: „Vatican News“ (858006) ir „Bernardinai.lt“ (8149)
+WP_ACF_SOURCE_ID = 59898       # Šaltinis: „Vatican News“ (59898)
 PUBLISH_STATUS = "draft"  # Visada įkelti kaip juodraštį patikrinimui
 
 feedparser.USER_AGENT = "Bernardinai-Vatican-Bot/1.0"
@@ -303,7 +304,8 @@ def main():
                 },
                 "acf": {
                     "short_description": meta_aprasymas_140,   # Trumpas aprašymas kortelėms (iki 140 simbolių, baigtinis sakinys)
-                    "author": [WP_ACF_AUTHOR_ID],              # 858006: Vatican News
+                    "author": WP_ACF_AUTHOR_IDS,               # [858006, 8149]: Vatican News ir Bernardinai.lt
+                    "source": [WP_ACF_SOURCE_ID],              # [59898]: Šaltinis „Vatican News“
                     "post_featured_image": "1",                # 1: Rodyti asociatyvią nuotrauką straipsnio viduje
                     "show_in_newest_posts": "yes",             # 13 laukas: yes : Rodyti Naujienose
                     "show_on_homepage": "no",                  # 12 laukas: no : Nerodyti „Redakcija rekomenduoja“
