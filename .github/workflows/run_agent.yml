@@ -1,12 +1,12 @@
 name: Bernardinai Video Agent
 
 on:
-  schedule:
-    - cron: '*/30 * * * *'  # Ši taisyklė paleidžia agentą kas 30 minučių
-  workflow_dispatch:        # Ši eilutė leis mums paleisti agentą rankiniu būdu testavimui
+  repository_dispatch:
+    types: [paleisti_video] # Klausosi išorinio cron-job.org žadintuvo
+  workflow_dispatch:        # Leidžia paleisti rankiniu būdu testavimui
 
 permissions:
-  contents: write           # Labai svarbu: leidžia agentui įrašyti video atgal į repozitoriją
+  contents: write           # Leidžia agentui įrašyti video atgal į repozitoriją
 
 jobs:
   run-agent:
@@ -36,15 +36,13 @@ jobs:
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         
-        # Pridedame pakeitimus
         git add last_article.txt bernardinai.mp4
         
-        # Patikriname, ar buvo sukurtas naujas video
         if ! git diff --staged --quiet; then
           git commit -m "Automatinis bernardinai.mp4 atnaujinimas"
           
-          # ANTI-KONFLIKTŲ GUDRYBĖ: Prieš įkeldami, parsisiunčiame naujausius pakeitimus
-          git pull --rebase origin main
-          
-          git push
+          # Apsauga nuo konfliktų, jei tuo pat metu dirba Vatican News agentas (bando iki 3 kartų)
+          for i in 1 2 3; do
+            git pull --rebase origin main && git push && break || sleep 5
+          done
         fi
