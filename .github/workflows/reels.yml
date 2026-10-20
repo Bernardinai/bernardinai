@@ -1,9 +1,9 @@
 name: Bernardinai Reels Bot
 
 on:
-  schedule:
-    - cron: '17 15 * * *'
-  workflow_dispatch:
+  repository_dispatch:
+    types: [paleisti_reels] # Klausosi išorinio cron-job.org žadintuvo
+  workflow_dispatch:        # Leidžia paleisti rankiniu būdu testavimui
 
 jobs:
   build:
@@ -16,6 +16,7 @@ jobs:
         python-version: '3.12'
     - name: Install dependencies
       run: |
+        sudo apt-get update
         sudo apt-get install -y fonts-dejavu
         pip install feedparser Pillow moviepy==1.0.3 edge-tts numpy google-api-python-client google-auth-httplib2 google-auth-oauthlib
     - name: Run script
