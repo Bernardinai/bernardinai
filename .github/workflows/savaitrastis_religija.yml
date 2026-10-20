@@ -1,9 +1,8 @@
 name: Religijos Savaitrastis
 
 on:
-  schedule:
-    # Sekmadieniais 04:40 UTC laiku (~07:40 Lietuvos laiku)
-    - cron: '40 4 * * 0'
+  repository_dispatch:
+    types: [paleisti_religijos_savaitrasti] # Klausosi išorinio cron-job.org žadintuvo
   workflow_dispatch:
     inputs:
       tikras_leidinys:
@@ -40,15 +39,16 @@ jobs:
       - name: 5. Generuojamas religijos savaitrastis
         env:
           MAILERLITE_API_KEY: ${{ secrets.MAILERLITE_API_KEY }}
-          EVENT_NAME: ${{ github.event_name }}
-          TIKRAS_LEIDINYS: ${{ github.event.inputs.tikras_leidinys }}
+          # Jei paleidžia cron-job.org (repository_dispatch), perduodame 'schedule' ir 'true', kad išleistų tikrą numerį:
+          EVENT_NAME: ${{ github.event_name == 'repository_dispatch' && 'schedule' || github.event_name }}
+          TIKRAS_LEIDINYS: ${{ github.event_name == 'repository_dispatch' && 'true' || github.event.inputs.tikras_leidinys }}
           WP_USERNAME: ${{ secrets.WP_USERNAME }}
           WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
           WP_CATEGORY_ID_RELIGIJA: ${{ secrets.WP_CATEGORY_ID_RELIGIJA }}
           FTP_SERVER: ${{ secrets.FTP_SERVER }}
           FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
           FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
-          CF_AUTOMATION_KEY: ${{ secrets.CF_AUTOMATION_KEY }} # NAUJA EILUTĖ RELIGIJOS SKRIPTUI
+          CF_AUTOMATION_KEY: ${{ secrets.CF_AUTOMATION_KEY }}
         run: python naujienlaiskis_religija.py
 
       - name: 6. Issaugomas archyvas repozitorijoje
@@ -58,11 +58,12 @@ jobs:
           git add archyvas/ leidinio_numeris_religija.txt
           if ! git diff --staged --quiet; then
             git commit -m "Automatinis Religijos PDF archyvo papildymas"
-            git pull --rebase origin main
-            git push
+            for i in 1 2 3; do
+              git pull --rebase origin main && git push && break || sleep 5
+            done
           fi
 
-      - name: 7. Patogus PDF atsiuntimas per Actions langą (Atsarginė kopija)
+      - name: 7. Patogus PDF atsiuntimas per Actions langa (Atsargine kopija)
         uses: actions/upload-artifact@v4
         with:
           name: religijos-savaitrastis-pdf
