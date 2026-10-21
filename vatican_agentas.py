@@ -30,7 +30,7 @@ WP_ACF_AUTHOR_IDS = [
     858006,
     8149,
 ]  # Autoriai: „Vatican News“ (858006) ir „Bernardinai.lt“ (8149)
-WP_ACF_SOURCE_ID = 59898  # Šaltinis: „Vatican News“ (59898)
+WP_ACF_SOURCE_IDS = [59898]  # Šaltinis: „Vatican News“ (59898)
 PUBLISH_STATUS = "draft"  # Visada įkelti kaip juodraštį patikrinimui
 
 feedparser.USER_AGENT = "Bernardinai-Vatican-Bot/1.0"
@@ -59,7 +59,6 @@ def formuoti_meta_iki_140(ivadas, pilnas_html):
   )
   pilnas_tekstas = re.sub(r"\s+", " ", pilnas_tekstas)
 
-  # Išskaidome į atskirus sakinius
   sakiniai = re.split(r"(?<=[.!?])\s+", pilnas_tekstas)
 
   # 1. Jei pats pirmas sakinys telpa į 140 simbolių (ir neturi '...')
@@ -90,7 +89,7 @@ def formuoti_meta_iki_140(ivadas, pilnas_html):
 
 
 def istraukti_vatikano_straipsni(url):
-  """Atsisiunčia originalų, nepakeistą Vatican News straipsnio tekstą, 100% pilną įvadą ir nuotrauką."""
+  """Atsisiunčia originalų Vatican News straipsnio tekstą, pilną įvadą, nuotrauką ir jos antraštę."""
   req = urllib.request.Request(
       url,
       headers={
@@ -114,10 +113,39 @@ def istraukti_vatikano_straipsni(url):
     if img_url.startswith("/"):
       img_url = "https://www.vaticannews.va" + img_url
 
-  # 2. PILNA įžanga tiesiai iš HTML puslapio struktūros (be og:description nukirpimų!)
+  # 2. Pagrindinės nuotraukos prierašas / antraštė (Caption)
+  img_caption = ""
+  for cap_sel in [
+      "figure.article__media figcaption",
+      ".article__media .figcaption",
+      ".article__header figcaption",
+      ".section--evidence figcaption",
+      ".media__caption",
+      ".caption",
+      "article figcaption",
+      "figcaption",
+  ]:
+    cap_elem = soup.select_one(cap_sel)
+    if cap_elem:
+      cap_txt = re.sub(r"\s+", " ", cap_elem.get_text(" ", strip=True)).strip()
+      if len(cap_txt) > 3:
+        img_caption = cap_txt
+        break
+
+  # Jei nerado <figcaption>, patikriname pagrindinės nuotraukos alt atributą
+  if not img_caption:
+    main_img = soup.select_one(
+        "figure.article__media img, .article__header img, .section--evidence"
+        " img, article img"
+    )
+    if main_img and main_img.get("alt"):
+      alt_txt = main_img.get("alt").strip()
+      if len(alt_txt) > 3:
+        img_caption = alt_txt
+
+  # 3. PILNA įžanga tiesiai iš HTML puslapio struktūros (be og:description nukirpimų!)
   pilnas_ivadas = ""
 
-  # A) Tikriname visas galimas Vatican News paantraštės klases
   for sel in [
       ".article__subtitle",
       ".article__occhiello",
@@ -132,10 +160,9 @@ def istraukti_vatikano_straipsni(url):
       txt = elem.get_text(" ", strip=True)
       if len(txt) > 25 and not txt.endswith("..."):
         pilnas_ivadas = txt
-        elem.decompose()  # Pašaliname, kad nesidubliuotų pagrindiniame tekste
+        elem.decompose()
         break
 
-  # B) Jei nerado pagal klases, ieškome pastraipos iškart po <h1> antraštės
   if not pilnas_ivadas:
     h1 = soup.find("h1")
     if h1:
@@ -148,7 +175,7 @@ def istraukti_vatikano_straipsni(url):
           sib.decompose()
           break
 
-  # 3. Autentiškas straipsnio tekstas (be jokių nutraukimų)
+  # 4. Autentiškas straipsnio tekstas (be jokių nutraukimų)
   paragraphs = []
   content_blocks = soup.select(
       "div.article__text, div.section--evidence .section__content"
@@ -176,7 +203,7 @@ def istraukti_vatikano_straipsni(url):
       break
 
   pilnas_html = "\n".join(paragraphs)
-  return pilnas_html, pilnas_ivadas, img_url
+  return pilnas_html, pilnas_ivadas, img_url, img_caption
 
 
 def gauti_arba_sukurti_zyma(tag_name, headers):
@@ -216,8 +243,8 @@ def gauti_arba_sukurti_zyma(tag_name, headers):
   return None
 
 
-def ikelti_nuotrauka_i_wp(img_url, wp_headers, idx):
-  """Parsiunčia nuotrauką iš Vatican News ir įkelia į Bernardinai.lt Media biblioteką."""
+def ikelti_nuotrauka_i_wp(img_url, img_caption, wp_headers, idx):
+  """Parsiunčia nuotrauką iš Vatican News, įkelia į Bernardinai.lt ir priskiria jos antraštę (Caption)."""
   if not img_url or not img_url.startswith("http"):
     return None
   try:
@@ -256,7 +283,29 @@ def ikelti_nuotrauka_i_wp(img_url, wp_headers, idx):
     )
     with urllib.request.urlopen(req_media) as resp_media:
       media_json = json.loads(resp_media.read().decode("utf-8"))
-      return int(media_json.get("id"))
+      media_id = int(media_json.get("id"))
+
+    # Jei turime nuotraukos prierašą (antraštę), įrašome jį į įkeltos nuotraukos Caption ir Alt laukelius
+    if media_id and img_caption:
+      try:
+        meta_headers = wp_headers.copy()
+        meta_headers["Content-Type"] = "application/json; charset=utf-8"
+        caption_payload = {
+            "caption": img_caption,
+            "alt_text": img_caption,
+            "description": img_caption,
+        }
+        req_cap = urllib.request.Request(
+            f"https://www.bernardinai.lt/wp-json/wp/v2/media/{media_id}",
+            data=json.dumps(caption_payload).encode("utf-8"),
+            headers=meta_headers,
+            method="POST",
+        )
+        urllib.request.urlopen(req_cap, timeout=15).read()
+      except Exception as e_cap:
+        print(f"Nepavyko priskirti nuotraukos antraštės: {e_cap}")
+
+    return media_id
   except Exception as e:
     print(f"Nepavyko įkelti nuotraukos ({img_url}): {e}")
     return None
@@ -327,7 +376,9 @@ def main():
 
     print(f"\n>>> Ruošiamas straipsnis: {title}")
     try:
-      pilnas_html, pilnas_ivadas, img_url = istraukti_vatikano_straipsni(link)
+      pilnas_html, pilnas_ivadas, img_url, img_caption = (
+          istraukti_vatikano_straipsni(link)
+      )
 
       # Nenaudojame RSS aprašymo, jei jame tekstas nukirptas su '...'
       if not pilnas_ivadas and rss_desc:
@@ -350,12 +401,14 @@ def main():
       ):
         pilnas_html = f"<p>{pilnas_ivadas}</p>\n" + pilnas_html
 
-      # PRIVALOMA DO-FOLLOW NUORODA PABAIGOJE
+      # PRIVALOMA DO-FOLLOW NUORODA PABAIGOJE (be žodžio „Šaltinis“ ir be Bold)
       saltinio_blokas = f'\n<p><a href="{link}">{link}</a></p>'
       galutinis_html = pilnas_html + saltinio_blokas
 
-      # Įkeliame nuotrauką į WordPress
-      featured_media_id = ikelti_nuotrauka_i_wp(img_url, wp_headers, idx)
+      # Įkeliame nuotrauką į WordPress kartu su jos antrašte (Caption)
+      featured_media_id = ikelti_nuotrauka_i_wp(
+          img_url, img_caption, wp_headers, idx
+      )
 
       payload_wp = {
           "title": title,
@@ -378,7 +431,9 @@ def main():
               "author": (
                   WP_ACF_AUTHOR_IDS
               ),  # [858006, 8149]: Vatican News ir Bernardinai.lt
-              "source": [WP_ACF_SOURCE_ID],  # [59898]: Šaltinis „Vatican News“
+              "sources": (
+                  WP_ACF_SOURCE_IDS
+              ),  # [59898]: Šaltiniai („sources“) -> Vatican News
               "post_featured_image": (
                   "1"
               ),  # 1: Rodyti asociatyvią nuotrauką straipsnio viduje
@@ -411,6 +466,8 @@ def main():
             f"    Meta ištrauka ({len(meta_aprasymas_140)} simb.):"
             f" {meta_aprasymas_140}"
         )
+        if img_caption:
+          print(f"    Nuotraukos antraštė: {img_caption}")
         issaugoti_publikuota(link)
         ikeltu_skaicius += 1
 
