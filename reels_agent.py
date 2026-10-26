@@ -112,7 +112,11 @@ def upload_to_youtube(video_file, video_title, video_description):
 
 
 def main():
-    feedparser.USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    real_user_agent = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        " (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Bernardinai-Internal-Agent-x9K2"
+    )
+    feedparser.USER_AGENT = real_user_agent
     dynamic_url = f"{RSS_URL}&nocache={int(time.time())}"
     feed = feedparser.parse(dynamic_url)
 
@@ -205,9 +209,9 @@ def main():
             try:
                 print(f"Ieškoma nuotrauka straipsniui '{title[:30]}...': {image_url}")
                 
-                # Išplėstinės antraštės, kad apgautume serverio apsaugas
+                # Išplėstinės antraštės su mūsų Cloudflare Skip raktu
                 advanced_headers = {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "User-Agent": real_user_agent,
                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
                     "Accept-Language": "lt,en-US;q=0.9,en;q=0.8",
                     "Referer": "https://www.bernardinai.lt/"
