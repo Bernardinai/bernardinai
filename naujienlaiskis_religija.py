@@ -11,10 +11,37 @@ import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
-from weasyprint import HTML
+from weasyprint import HTML, default_url_fetcher
 from zoneinfo import ZoneInfo
 
-feedparser.USER_AGENT = "Bernardinai-Naujienlaiskis-Bot/1.0"
+# Bendras User-Agent su Cloudflare Skip raktu visoms užklausoms į bernardinai.lt
+INTERNAL_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    " (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Bernardinai-Internal-Agent-x9K2"
+)
+
+feedparser.USER_AGENT = INTERNAL_USER_AGENT
+
+
+def weasyprint_url_fetcher(url, timeout=10, ssl_context=None):
+    """Prideda Cloudflare Skip raktą, kai WeasyPrint siunčiasi nuotraukas PDF generavimui."""
+    if url.startswith("http"):
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": INTERNAL_USER_AGENT,
+                "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=timeout, context=ssl_context) as resp:
+            return {
+                "string": resp.read(),
+                "mime_type": resp.headers.get_content_type(),
+                "encoding": resp.headers.get_content_charset(),
+                "redirected_url": resp.geturl(),
+            }
+    return default_url_fetcher(url, timeout=timeout, ssl_context=ssl_context)
+
 
 event_name = os.environ.get("EVENT_NAME", "")
 force_real = os.environ.get("TIKRAS_LEIDINYS", "false").lower() == "true"
@@ -669,7 +696,7 @@ pdf_archyvas = f"{metu_aplankas}/religijos_savaitrastis_{today_str}.pdf"
 
 print(f"Generuojamas PDF failas {current_year} metų archyvui...")
 try:
-    HTML(string=html_kodas).write_pdf(pdf_archyvas)
+    HTML(string=html_kodas, url_fetcher=weasyprint_url_fetcher).write_pdf(pdf_archyvas)
     print(f">>>> Sėkmingai sukurta: {pdf_archyvas}")
 except Exception as e:
     print(">>> GRIEŽTA KLAIDA GENERUOJANT PDF:")
@@ -1000,10 +1027,7 @@ if wp_user and wp_pass:
         "Authorization": basic_val,
         "X-HTTP-Authorization": basic_val,
         "REDIRECT_HTTP_AUTHORIZATION": basic_val,
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            " (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-        ),
+        "User-Agent": INTERNAL_USER_AGENT,
         "X-Bnd-Automate": cf_key,
     }
 
@@ -1021,11 +1045,7 @@ if wp_user and wp_pass:
             print(f"Atsisiunčiama viršelio nuotrauka iš: {svara_img_url}")
 
             img_headers = {
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-                    " AppleWebKit/537.36 (KHTML, like Gecko)"
-                    " Chrome/122.0.0.0 Safari/537.36"
-                ),
+                "User-Agent": INTERNAL_USER_AGENT,
                 "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
             }
             if cf_key:
