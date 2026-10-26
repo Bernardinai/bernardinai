@@ -37,7 +37,7 @@ def main():
     # Naudojame realios naršyklės antraštę, kad Wordfence neblokuotų RSS srauto ir nuotraukų
     real_user_agent = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        " (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        " (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Bernardinai-Internal-Agent-x9K2"
     )
     feedparser.USER_AGENT = real_user_agent
     dynamic_url = f"{RSS_URL}&nocache={int(time.time())}"
