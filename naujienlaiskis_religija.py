@@ -11,7 +11,7 @@ import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
-from weasyprint import HTML, default_url_fetcher
+from weasyprint import HTML
 from zoneinfo import ZoneInfo
 
 # Bendras User-Agent su Cloudflare Skip raktu visoms užklausoms į bernardinai.lt
@@ -23,24 +23,35 @@ INTERNAL_USER_AGENT = (
 feedparser.USER_AGENT = INTERNAL_USER_AGENT
 
 
-def weasyprint_url_fetcher(url, timeout=10, ssl_context=None):
-    """Prideda Cloudflare Skip raktą, kai WeasyPrint siunčiasi nuotraukas PDF generavimui."""
-    if url.startswith("http"):
-        req = urllib.request.Request(
-            url,
-            headers={
-                "User-Agent": INTERNAL_USER_AGENT,
-                "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
-            },
-        )
-        with urllib.request.urlopen(req, timeout=timeout, context=ssl_context) as resp:
-            return {
-                "string": resp.read(),
-                "mime_type": resp.headers.get_content_type(),
-                "encoding": resp.headers.get_content_charset(),
-                "redirected_url": resp.geturl(),
-            }
-    return default_url_fetcher(url, timeout=timeout, ssl_context=ssl_context)
+def weasyprint_url_fetcher(url, timeout=10, ssl_context=None, **kwargs):
+    """Prideda Cloudflare Skip raktą ir palaiko visas WeasyPrint versijas (įskaitant 68+)."""
+    if url.startswith("data:"):
+        # Apdorojame Base64 logotipą (data:image/png;base64,...) tiesiogiai į dict
+        header, data = url.split(",", 1)
+        mime_type = header.split(";")[0].replace("data:", "") or "image/png"
+        if ";base64" in header:
+            raw_bytes = base64.b64decode(data)
+        else:
+            raw_bytes = urllib.parse.unquote_to_bytes(data)
+        return {
+            "string": raw_bytes,
+            "mime_type": mime_type,
+        }
+
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": INTERNAL_USER_AGENT,
+            "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=timeout, context=ssl_context) as resp:
+        return {
+            "string": resp.read(),
+            "mime_type": resp.headers.get_content_type(),
+            "encoding": resp.headers.get_content_charset(),
+            "redirected_url": resp.geturl(),
+        }
 
 
 event_name = os.environ.get("EVENT_NAME", "")
