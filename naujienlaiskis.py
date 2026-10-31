@@ -11,7 +11,12 @@ import urllib.parse
 import urllib.request
 from zoneinfo import ZoneInfo
 import feedparser
-from weasyprint import HTML, default_url_fetcher
+from weasyprint import HTML
+try:
+    from weasyprint import default_url_fetcher
+except ImportError:
+    from weasyprint.urls import URLFetcher
+    default_url_fetcher = URLFetcher()
 
 # Bendras User-Agent su Cloudflare Skip raktu visoms užklausoms į bernardinai.lt
 INTERNAL_USER_AGENT = (
@@ -22,7 +27,7 @@ INTERNAL_USER_AGENT = (
 feedparser.USER_AGENT = INTERNAL_USER_AGENT
 
 
-def weasyprint_url_fetcher(url, timeout=10, ssl_context=None):
+def weasyprint_url_fetcher(url, timeout=10, ssl_context=None, **kwargs):
     """Prideda Cloudflare Skip raktą, kai WeasyPrint siunčiasi nuotraukas PDF generavimui."""
     if url.startswith("http"):
         req = urllib.request.Request(
