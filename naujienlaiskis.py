@@ -12,6 +12,7 @@ import urllib.request
 from zoneinfo import ZoneInfo
 import feedparser
 from weasyprint import HTML
+from weasyprint import HTML
 from zoneinfo import ZoneInfo
 
 # Bendras User-Agent su Cloudflare Skip raktu visoms užklausoms į bernardinai.lt
@@ -22,37 +23,35 @@ INTERNAL_USER_AGENT = (
 
 feedparser.USER_AGENT = INTERNAL_USER_AGENT
 
-
-def weasyprint_url_fetcher(url, timeout=10, ssl_context=None, **kwargs):
-    """Prideda Cloudflare Skip raktą ir palaiko visas WeasyPrint versijas (įskaitant 68+)."""
-    if url.startswith("data:"):
-        # Apdorojame Base64 logotipą (data:image/png;base64,...) tiesiogiai į dict
-        header, data = url.split(",", 1)
-        mime_type = header.split(";")[0].replace("data:", "") or "image/png"
-        if ";base64" in header:
-            raw_bytes = base64.b64decode(data)
-        else:
-            raw_bytes = urllib.parse.unquote_to_bytes(data)
-        return {
-            "string": raw_bytes,
-            "mime_type": mime_type,
-        }
-
-    req = urllib.request.Request(
-        url,
+try:
+    # WeasyPrint 68.0+ oficialus būdas su Cloudflare User-Agent ir Accept antraštėmis
+    from weasyprint.urls import URLFetcher
+    weasyprint_url_fetcher = URLFetcher(
         headers={
             "User-Agent": INTERNAL_USER_AGENT,
             "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
-        },
-    )
-    with urllib.request.urlopen(req, timeout=timeout, context=ssl_context) as resp:
-        return {
-            "string": resp.read(),
-            "mime_type": resp.headers.get_content_type(),
-            "encoding": resp.headers.get_content_charset(),
-            "redirected_url": resp.geturl(),
         }
-
+    )
+except ImportError:
+    # Senesnėms WeasyPrint (<68.0) versijoms
+    from weasyprint import default_url_fetcher
+    def weasyprint_url_fetcher(url, timeout=10, ssl_context=None):
+        if url.startswith("http"):
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": INTERNAL_USER_AGENT,
+                    "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=timeout, context=ssl_context) as resp:
+                return {
+                    "string": resp.read(),
+                    "mime_type": resp.headers.get_content_type(),
+                    "encoding": resp.headers.get_content_charset(),
+                    "redirected_url": resp.geturl(),
+                }
+        return default_url_fetcher(url, timeout=timeout, ssl_context=ssl_context)
 
 event_name = os.environ.get("EVENT_NAME", "")
 force_real = os.environ.get("TIKRAS_LEIDINYS", "false").lower() == "true"
