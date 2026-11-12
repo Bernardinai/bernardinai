@@ -31,6 +31,7 @@ jobs:
 
       - name: Įdiegti reikalingas bibliotekas
         run: |
+          python -m pip install --upgrade pip
           pip install feedparser beautifulsoup4
 
       - name: Paleisti Vatican News agentą
@@ -48,5 +49,10 @@ jobs:
           git config --local user.name "github-actions[bot]"
           if [ -f vatican_publikuota.txt ]; then
             git add vatican_publikuota.txt
-            git diff --staged --quiet || (git commit -m "Atnaujintas Vatican News publikuotų straipsnių sąrašas" && git pull --rebase && git push)
+            if ! git diff --staged --quiet; then
+              git commit -m "Atnaujintas Vatican News publikuotų straipsnių sąrašas"
+              for i in 1 2 3; do
+                git pull --rebase origin main && git push && break || sleep 5
+              done
+            fi
           fi
