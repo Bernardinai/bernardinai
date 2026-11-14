@@ -1208,28 +1208,31 @@ if wp_user and wp_pass:
 
     payload_wp = {
         "title": irasas_pavadinimas,
-        "slug": f"kulturos-savaitrastis-nr-{current_year}-{numeris}-{today_str}",
+        "slug": (
+            f"kulturos-savaitrastis-nr-{current_year}-{numeris}-{today_str}"
+        ),
         "content": wp_html_turinys,
         "excerpt": meta_aprasymas,
         "status": "publish" if is_real_run else "draft",
         "categories": kategorijos_sarasas,
         "tags": tag_ids,
         "acf": {
-            "short_description": meta_aprasymas,
-            "author": [wp_acf_author_id],
-            "show_on_homepage": "yes",  # Rodyti "Redakcija rekomenduoja"
-            "hide_from_news": "yes",    # Nerodyti bendrame naujienų sraute (jei naudojamas ACF laukas)
-            "show_in_news": "no",
-            "post_featured_image": "1", # Rodyti asociatyvią nuotrauką straipsnio viduje
+            "short_description": meta_aprasymas,  # 2 laukas: Trumpa ištrauka
+            "author": [wp_acf_author_id],         # 4 laukas: Autorius (Bernardinai.lt)
+            "show_on_homepage": "yes",            # 12 laukas: Rodyti "Redakcija rekomenduoja"
+            "show_in_newest_posts": "no",         # 13 laukas: Nerodyti Naujienose (agentūrų žinutėse)
+            "show_on_homepage_media": "no",       # 14 laukas: Nerodyti multimedijos straipsniuose
+            "show_in_main_posts": 0,              # 15 laukas: Nerodyti viršiniuose
+            "post_featured_image": "1",           # 22 laukas: Rodyti asociatyvią nuotrauką
         },
         "meta": {
             "_yoast_wpseo_focuskw": focus_keyphrase,
             "_yoast_wpseo_title": seo_title,
             "_yoast_wpseo_metadesc": meta_aprasymas,
-            "_brn_hide_from_newest": "1",  # Paslepia iš bendro "Naujienų" srauto per pre_get_posts filtrą
-            "show_on_homepage": "yes",
-            "post_featured_image": "1",
             "short_description": meta_aprasymas,
+            "show_on_homepage": "yes",
+            "show_in_newest_posts": "no",
+            "post_featured_image": "1",
         },
     }
 
