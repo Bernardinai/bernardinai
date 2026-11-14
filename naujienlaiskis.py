@@ -26,13 +26,14 @@ INTERNAL_USER_AGENT = (
 feedparser.USER_AGENT = INTERNAL_USER_AGENT
 
 try:
-    # WeasyPrint 68.0+ oficialus būdas su Cloudflare User-Agent ir X-Bnd-Automate antrašte
+    # WeasyPrint 68.0+ oficialus būdas su Cloudflare User-Agent, Referer ir X-Bnd-Automate antrašte
     from weasyprint.urls import URLFetcher
 
     weasyprint_url_fetcher = URLFetcher(
         headers={
             "User-Agent": INTERNAL_USER_AGENT,
             "X-Bnd-Automate": CF_SECRET_KEY,
+            "Referer": "https://www.bernardinai.lt/",
             "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
         }
     )
@@ -47,6 +48,7 @@ except ImportError:
                 headers={
                     "User-Agent": INTERNAL_USER_AGENT,
                     "X-Bnd-Automate": CF_SECRET_KEY,
+                    "Referer": "https://www.bernardinai.lt/",
                     "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
                 },
             )
@@ -245,22 +247,28 @@ kiti_straipsniai = []
 
 
 def nuskaityti_rss_srauta(rss_url):
-    """Nuskaito RSS srautą su Cloudflare X-Bnd-Automate ir User-Agent antraštėmis."""
+    """Nuskaito RSS srautą su Referer, X-Bnd-Automate ir User-Agent antraštėmis."""
     try:
         req = urllib.request.Request(
             rss_url,
             headers={
                 "User-Agent": INTERNAL_USER_AGENT,
                 "X-Bnd-Automate": CF_SECRET_KEY,
+                "Referer": "https://www.bernardinai.lt/",
                 "Accept": "application/rss+xml, application/xml, text/xml, */*",
             },
         )
-        with urllib.request.urlopen(req, timeout=20) as resp:
+        with urllib.request.urlopen(req, timeout=25) as resp:
             raw_xml = resp.read()
-            return feedparser.parse(raw_xml)
+            parsed = feedparser.parse(raw_xml)
+            print(f"RSS {rss_url} -> rasta įrašų: {len(parsed.entries)}")
+            return parsed
+    except urllib.error.HTTPError as e:
+        print(f"HTTP klaida {e.code} nuskaitant {rss_url}: {e.reason}")
+        return feedparser.FeedParserDict(entries=[])
     except Exception as e:
         print(f"Nepavyko tiesiogiai nuskaityti {rss_url}: {e}")
-        return feedparser.parse(rss_url)
+        return feedparser.FeedParserDict(entries=[])
 
 
 def apdoroti_straipsni(entry, is_main=True):
@@ -449,34 +457,191 @@ def apdoroti_straipsni(entry, is_main=True):
     }
 
 
+def nuskaityti_is_wp_api():
+    """Atsarginis būdas: nuskaito savaitės kultūros straipsnius tiesiai per WordPress REST API."""
+    print(
+        "RSS srautas tuščias – nuskaitomi kultūros straipsniai tiesiai per WP"
+        " REST API..."
+    )
+    after_iso = one_week_ago.strftime("%Y-%m-%dT00:00:00")
+    api_url = (
+        "https://www.bernardinai.lt/wp-json/wp/v2/posts"
+        f"?categories=18,34,30,35,36,38&after={after_iso}&per_page=50&_embed=1"
+    )
+    try:
+        req = urllib.request.Request(
+            api_url,
+            headers={
+                "User-Agent": INTERNAL_USER_AGENT,
+                "X-Bnd-Automate": CF_SECRET_KEY,
+                "Referer": "https://www.bernardinai.lt/",
+                "Accept": "application/json",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            posts = json.loads(resp.read().decode("utf-8"))
+            print(f"Per WP REST API rasta kultūros straipsnių: {len(posts)}")
+            for p in posts:
+                link = p.get("link", "#")
+                if link in matyti_url:
+                    continue
+                title_raw = re.sub(
+                    "<[^<]+>", "", p.get("title", {}).get("rendered", "")
+                ).strip()
+                if (
+                    "kultūros savaitraštis" in title_raw.lower()
+                    or "savaitraštis nr." in title_raw.lower()
+                ):
+                    continue
+
+                date_str = p.get("date", "")
+                try:
+                    pub_date_obj = datetime.datetime.fromisoformat(date_str)
+                    data_lt = (
+                        f"{pub_date_obj.year} m."
+                        f" {menesiai[pub_date_obj.month - 1]}"
+                        f" {pub_date_obj.day} d."
+                    )
+                except Exception:
+                    pub_date_obj = datetime.datetime.now()
+                    data_lt = leidinio_data
+
+                autorius = "Bernardinai.lt"
+                img_url = isvalyti_img_url(p.get("featured_image_src", ""))
+                embedded = p.get("_embedded", {})
+                if not img_url and "wp:featuredmedia" in embedded:
+                    media_list = embedded["wp:featuredmedia"]
+                    if media_list and isinstance(media_list[0], dict):
+                        img_url = isvalyti_img_url(
+                            media_list[0].get("source_url", "")
+                        )
+
+                if "author" in embedded and embedded["author"]:
+                    a_name = embedded["author"][0].get("name", "")
+                    if a_name and a_name.lower() not in [
+                        "admin",
+                        "bernardinai.lt",
+                        "redakcija",
+                    ]:
+                        autorius = a_name
+
+                excerpt_raw = re.sub(
+                    "<[^<]+>", "", p.get("excerpt", {}).get("rendered", "")
+                ).strip()
+                izanga_clean = (
+                    excerpt_raw[:250] + "..."
+                    if len(excerpt_raw) > 250
+                    else excerpt_raw
+                )
+
+                pilnas_tekstas = p.get("content", {}).get("rendered", "")
+                pilnas_tekstas = re.sub(r"<img[^>]*>", "", pilnas_tekstas)
+                pilnas_tekstas = re.sub(
+                    r"<figcaption[^>]*>.*?</figcaption>",
+                    "",
+                    pilnas_tekstas,
+                    flags=re.IGNORECASE | re.DOTALL,
+                )
+                pilnas_tekstas = re.sub(
+                    r"<h([1-6])\b[^>]*>",
+                    r'<div class="heading-\1">',
+                    pilnas_tekstas,
+                    flags=re.IGNORECASE,
+                )
+                pilnas_tekstas = re.sub(
+                    r"</h[1-6]>", r"</div>", pilnas_tekstas, flags=re.IGNORECASE
+                )
+                pilnas_tekstas = re.sub(
+                    r"(<p[^>]*>)\s*([A-ZĄČĘĖĮŠŲŪŽa-ząčęėįšųūž])",
+                    r'\1<span class="drop-cap">\2</span>',
+                    pilnas_tekstas,
+                    count=1,
+                )
+
+                acf_data = p.get("acf", {})
+                is_recommended = (
+                    isinstance(acf_data, dict)
+                    and acf_data.get("show_on_homepage") == "yes"
+                )
+
+                item = {
+                    "title": title_raw,
+                    "author": autorius,
+                    "source": "Bernardinai.lt",
+                    "date": data_lt,
+                    "pub_date_obj": pub_date_obj,
+                    "image": img_url,
+                    "excerpt": izanga_clean,
+                    "content": pilnas_tekstas,
+                    "link": link,
+                }
+                matyti_url.add(link)
+                if is_recommended or len(pagrindiniai_straipsniai) < 6:
+                    pagrindiniai_straipsniai.append(item)
+                else:
+                    kiti_straipsniai.append(item)
+    except Exception as e:
+        print(f"Klaida nuskaitant per WP REST API: {e}")
+
+
 # --- KULTŪROS RSS SRAUTAI ---
 print("Nuskaitomas pagrindinis RSS srautas (Kultūra)...")
 for puslapis in range(1, 10):
-    rss_url = (
-        "https://www.bernardinai.lt/feed/mailerlite-kultura/?paged="
-        f"{puslapis}"
-    )
-    feed = nuskaityti_rss_srauta(rss_url)
-    if not feed.entries:
+    rss_urls = [
+        (
+            f"https://www.bernardinai.lt/?feed=mailerlite-kultura&paged={puslapis}"
+            if puslapis > 1
+            else "https://www.bernardinai.lt/?feed=mailerlite-kultura"
+        ),
+        (
+            f"https://www.bernardinai.lt/feed/mailerlite-kultura/?paged={puslapis}"
+            if puslapis > 1
+            else "https://www.bernardinai.lt/feed/mailerlite-kultura/"
+        ),
+    ]
+    rado_puslapyje = False
+    for rss_url in rss_urls:
+        feed = nuskaityti_rss_srauta(rss_url)
+        if feed.entries:
+            rado_puslapyje = True
+            for entry in feed.entries:
+                straipsnis = apdoroti_straipsni(entry, is_main=True)
+                if straipsnis:
+                    pagrindiniai_straipsniai.append(straipsnis)
+            break
+    if not rado_puslapyje:
         break
-    for entry in feed.entries:
-        straipsnis = apdoroti_straipsni(entry, is_main=True)
-        if straipsnis:
-            pagrindiniai_straipsniai.append(straipsnis)
 
 print("Nuskaitomas papildomas Kultūros RSS srautas...")
 for puslapis in range(1, 10):
-    rss_url = (
-        "https://www.bernardinai.lt/feed/mailerlite-kultura-visi/?paged="
-        f"{puslapis}"
-    )
-    feed = nuskaityti_rss_srauta(rss_url)
-    if not feed.entries:
+    rss_urls = [
+        (
+            f"https://www.bernardinai.lt/?feed=mailerlite-kultura-visi&paged={puslapis}"
+            if puslapis > 1
+            else "https://www.bernardinai.lt/?feed=mailerlite-kultura-visi"
+        ),
+        (
+            f"https://www.bernardinai.lt/feed/mailerlite-kultura-visi/?paged={puslapis}"
+            if puslapis > 1
+            else "https://www.bernardinai.lt/feed/mailerlite-kultura-visi/"
+        ),
+    ]
+    rado_puslapyje = False
+    for rss_url in rss_urls:
+        feed = nuskaityti_rss_srauta(rss_url)
+        if feed.entries:
+            rado_puslapyje = True
+            for entry in feed.entries:
+                straipsnis = apdoroti_straipsni(entry, is_main=False)
+                if straipsnis:
+                    kiti_straipsniai.append(straipsnis)
+            break
+    if not rado_puslapyje:
         break
-    for entry in feed.entries:
-        straipsnis = apdoroti_straipsni(entry, is_main=False)
-        if straipsnis:
-            kiti_straipsniai.append(straipsnis)
+
+# Jei RSS srautai grąžino 0 straipsnių, paimame juos tiesiai iš WordPress REST API
+if len(pagrindiniai_straipsniai) == 0 and len(kiti_straipsniai) == 0:
+    nuskaityti_is_wp_api()
 
 pagrindiniai_straipsniai.sort(key=lambda x: x["pub_date_obj"])
 kiti_straipsniai.sort(key=lambda x: x["pub_date_obj"])
@@ -488,7 +653,7 @@ print(
 
 if len(pagrindiniai_straipsniai) == 0 and len(kiti_straipsniai) == 0:
     print(
-        ">>> KRITINĖ KLAIDA: Nepavyko nuskaityti nė vieno straipsnio iš RSS!"
+        ">>> KRITINĖ KLAIDA: Nepavyko nuskaityti nė vieno straipsnio!"
         " Stabdome vykdymą, kad nebūtų išleistas tuščias savaitraštis."
     )
     sys.exit(1)
@@ -1051,6 +1216,7 @@ if wp_user and wp_pass:
         "REDIRECT_HTTP_AUTHORIZATION": basic_val,
         "User-Agent": INTERNAL_USER_AGENT,
         "X-Bnd-Automate": CF_SECRET_KEY,
+        "Referer": "https://www.bernardinai.lt/",
     }
 
     # 1. Surenkame trumpus raktažodžius (žymas)
@@ -1105,6 +1271,7 @@ if wp_user and wp_pass:
             img_headers = {
                 "User-Agent": INTERNAL_USER_AGENT,
                 "X-Bnd-Automate": CF_SECRET_KEY,
+                "Referer": "https://www.bernardinai.lt/",
                 "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
             }
 
@@ -1194,7 +1361,7 @@ if wp_user and wp_pass:
             )
         temu_sarasas_html += "</ul>"
 
-    wp_html_turinys = f"""<p>Skaitytojams pateikiame naujausią interneto dienraščio „Bernardinai.lt“ <strong>kultūros savaitraštis</strong> numerį ({leidinio_data}, Nr. {leidinio_numeris}). Šiame leidinyje rasite redaktorių atrinktus svarbiausius savaitės kultūros tekstus, menų apžvalgas ir pokalbius. Leidinys paruoštas patogiam skaitymui žurnalo formatu.</p>
+    wp_html_turinys = f"""<p>Skaitytojams pateikiame naujausią interneto dienraščio „Bernardinai.lt“ <strong>kultūros savaitraščio</strong> numerį ({leidinio_data}, Nr. {leidinio_numeris}). Šiame leidinyje rasite redaktorių atrinktus svarbiausius savaitės kultūros tekstus, menų apžvalgas ir pokalbius. Leidinys paruoštas patogiam skaitymui žurnalo formatu.</p>
 {temu_sarasas_html}
 <p style="margin: 30px 0; text-align: center;">
     <a href="{pdf_url}" target="_blank" rel="noopener noreferrer" style="background-color: #7a2222; color: #ffffff; padding: 14px 28px; text-decoration: none; font-weight: bold; border-radius: 5px; display: inline-block; font-size: 16px;">
