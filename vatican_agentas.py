@@ -19,10 +19,18 @@ MAX_ARTICLES_PER_RUN = (
     5  # Kiek daugiausia naujų straipsnių įkelti vieno paleidimo metu
 )
 
-# WordPress prisijungimai iš aplinkos kintamųjų (GitHub Secrets)
+# WordPress prisijungimai ir Cloudflare raktas iš aplinkos kintamųjų (GitHub Secrets)
 WP_USER = os.environ.get("WP_USERNAME", "")
 WP_PASS = os.environ.get("WP_APP_PASSWORD", "")
-CF_KEY = os.environ.get("CF_AUTOMATION_KEY", "")
+CF_KEY = os.environ.get(
+    "CF_AUTOMATION_KEY", "BernardinuNaujienlaiskisLabaiSlapt@00"
+)
+
+INTERNAL_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    " (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+    " Bernardinai-Naujienlaiskis-Bot Bernardinai-Internal-Agent-x9K2"
+)
 
 # Tikslūs Bernardinai.lt ID pagal jūsų nustatymus
 WP_CATEGORY_ID = 24  # Rubrika: „Bažnyčia pasaulyje“
@@ -33,452 +41,465 @@ WP_ACF_AUTHOR_IDS = [
 WP_ACF_SOURCE_IDS = [59898]  # Šaltinis: „Vatican News“ (59898)
 PUBLISH_STATUS = "draft"  # Visada įkelti kaip juodraštį patikrinimui
 
-feedparser.USER_AGENT = "Bernardinai-Vatican-Bot/1.0"
+feedparser.USER_AGENT = INTERNAL_USER_AGENT
 
 
 def uzkrauti_publikuotus():
-  if not os.path.exists(TRACKER_FILE):
-    return set()
-  with open(TRACKER_FILE, "r", encoding="utf-8") as f:
-    return set(line.strip() for line in f if line.strip())
+    if not os.path.exists(TRACKER_FILE):
+        return set()
+    with open(TRACKER_FILE, "r", encoding="utf-8") as f:
+        return set(line.strip() for line in f if line.strip())
 
 
 def issaugoti_publikuota(url):
-  with open(TRACKER_FILE, "a", encoding="utf-8") as f:
-    f.write(f"{url}\n")
+    with open(TRACKER_FILE, "a", encoding="utf-8") as f:
+        f.write(f"{url}\n")
 
 
 def formuoti_meta_iki_140(ivadas, pilnas_html):
-  """Paruošia meta aprašymą iki 140 simbolių.
+    """Paruošia meta aprašymą iki 140 simbolių viena pastraipa ir trumpais sakiniais."""
+    pilnas_tekstas = (
+        f"{ivadas} {re.sub(r'<[^>]+>', ' ', pilnas_html)}".strip()
+    )
+    pilnas_tekstas = re.sub(r"\s+", " ", pilnas_tekstas)
 
-  Jei pirmas sakinys telpa į 140 simbolių – ima jį. Jei pirmas sakinys per ilgas
-  – suranda pirmą pilną baigtinį sakinį iš teksto, kuris telpa į 140 simbolių.
-  """
-  pilnas_tekstas = (
-      f"{ivadas} {re.sub(r'<[^>]+>', ' ', pilnas_html)}".strip()
-  )
-  pilnas_tekstas = re.sub(r"\s+", " ", pilnas_tekstas)
+    sakiniai = re.split(r"(?<=[.!?])\s+", pilnas_tekstas)
 
-  sakiniai = re.split(r"(?<=[.!?])\s+", pilnas_tekstas)
+    # 1. Jei pats pirmas sakinys telpa į 140 simbolių (ir neturi '...')
+    if sakiniai and 35 <= len(sakiniai[0]) <= 140 and "..." not in sakiniai[0]:
+        return sakiniai[0].strip()
 
-  # 1. Jei pats pirmas sakinys telpa į 140 simbolių (ir neturi '...')
-  if sakiniai and 35 <= len(sakiniai[0]) <= 140 and "..." not in sakiniai[0]:
-    return sakiniai[0].strip()
+    # 2. Jei pirmas ir antras sakiniai kartu telpa į 140 simbolių
+    if len(sakiniai) >= 2:
+        du_sakiniai = f"{sakiniai[0]} {sakiniai[1]}".strip()
+        if len(du_sakiniai) <= 140 and "..." not in du_sakiniai:
+            return du_sakiniai
 
-  # 2. Jei pirmas ir antras sakiniai kartu telpa į 140 simbolių
-  if len(sakiniai) >= 2:
-    du_sakiniai = f"{sakiniai[0]} {sakiniai[1]}".strip()
-    if len(du_sakiniai) <= 140 and "..." not in du_sakiniai:
-      return du_sakiniai
+    # 3. Jei pirmas sakinys per ilgas (>140 simb.), ieškome pirmo pilno baigtinio sakinio tekste (50–140 simb.)
+    for sak in sakiniai:
+        sak_svarus = sak.strip().lstrip("„\"'–—- ")
+        if (
+            50 <= len(sak_svarus) <= 140
+            and sak_svarus.endswith((".", "!", "?"))
+            and "..." not in sak_svarus
+        ):
+            return sak_svarus
 
-  # 3. Jei pirmas sakinys per ilgas (>140 simb.), ieškome pirmo pilno baigtinio sakinio tekste (50–140 simb.)
-  for sak in sakiniai:
-    sak_svarus = sak.strip().lstrip("„\"'–—- ")
-    if (
-        50 <= len(sak_svarus) <= 140
-        and sak_svarus.endswith((".", "!", "?"))
-        and "..." not in sak_svarus
-    ):
-      return sak_svarus
-
-  # 4. Atsarginis variantas: kerpame ties paskutiniu pilnu žodžiu iki 137 simbolių su '...'
-  apkarpytas = pilnas_tekstas[:137]
-  if " " in apkarpytas:
-    apkarpytas = apkarpytas.rsplit(" ", 1)[0]
-  return apkarpytas.rstrip(".,;:-–— ") + "..."
+    # 4. Atsarginis variantas: kerpame ties paskutiniu pilnu žodžiu iki 137 simbolių su '...'
+    apkarpytas = pilnas_tekstas[:137]
+    if " " in apkarpytas:
+        apkarpytas = apkarpytas.rsplit(" ", 1)[0]
+    return apkarpytas.rstrip(".,;:-–— ") + "..."
 
 
 def istraukti_vatikano_straipsni(url):
-  """Atsisiunčia originalų Vatican News straipsnio tekstą, pilną įvadą, nuotrauką ir jos antraštę."""
-  req = urllib.request.Request(
-      url,
-      headers={
-          "User-Agent": (
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-              "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0"
-              " Safari/537.36"
-          )
-      },
-  )
-  with urllib.request.urlopen(req, timeout=25) as resp:
-    html = resp.read().decode("utf-8", errors="ignore")
-
-  soup = BeautifulSoup(html, "html.parser")
-
-  # 1. Pagrindinė nuotrauka (og:image)
-  img_url = ""
-  og_img = soup.find("meta", property="og:image")
-  if og_img and og_img.get("content"):
-    img_url = og_img["content"].strip()
-    if img_url.startswith("/"):
-      img_url = "https://www.vaticannews.va" + img_url
-
-  # 2. Pagrindinės nuotraukos prierašas / antraštė (Caption)
-  img_caption = ""
-  for cap_sel in [
-      "figure.article__media figcaption",
-      ".article__media .figcaption",
-      ".article__header figcaption",
-      ".section--evidence figcaption",
-      ".media__caption",
-      ".caption",
-      "article figcaption",
-      "figcaption",
-  ]:
-    cap_elem = soup.select_one(cap_sel)
-    if cap_elem:
-      cap_txt = re.sub(r"\s+", " ", cap_elem.get_text(" ", strip=True)).strip()
-      if len(cap_txt) > 3:
-        img_caption = cap_txt
-        break
-
-  # Jei nerado <figcaption>, patikriname pagrindinės nuotraukos alt atributą
-  if not img_caption:
-    main_img = soup.select_one(
-        "figure.article__media img, .article__header img, .section--evidence"
-        " img, article img"
+    """Atsisiunčia originalų Vatican News straipsnio tekstą, pilną įvadą, nuotrauką ir jos antraštę."""
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0"
+                " Safari/537.36"
+            )
+        },
     )
-    if main_img and main_img.get("alt"):
-      alt_txt = main_img.get("alt").strip()
-      if len(alt_txt) > 3:
-        img_caption = alt_txt
+    with urllib.request.urlopen(req, timeout=25) as resp:
+        html = resp.read().decode("utf-8", errors="ignore")
 
-  # 3. PILNA įžanga tiesiai iš HTML puslapio struktūros (be og:description nukirpimų!)
-  pilnas_ivadas = ""
+    soup = BeautifulSoup(html, "html.parser")
 
-  for sel in [
-      ".article__subtitle",
-      ".article__occhiello",
-      ".article__lead",
-      ".article__abstract",
-      ".section--evidence .article__summary",
-      "div.article__header p",
-      "header p",
-  ]:
-    elem = soup.select_one(sel)
-    if elem:
-      txt = elem.get_text(" ", strip=True)
-      if len(txt) > 25 and not txt.endswith("..."):
-        pilnas_ivadas = txt
-        elem.decompose()
-        break
+    # 1. Pagrindinė nuotrauka (og:image)
+    img_url = ""
+    og_img = soup.find("meta", property="og:image")
+    if og_img and og_img.get("content"):
+        img_url = og_img["content"].strip()
+        if img_url.startswith("/"):
+            img_url = "https://www.vaticannews.va" + img_url
 
-  if not pilnas_ivadas:
-    h1 = soup.find("h1")
-    if h1:
-      for sib in h1.find_next_siblings(["div", "p", "h2"]):
-        if sib.name == "div" and "article__text" in (sib.get("class") or []):
-          break
-        txt = sib.get_text(" ", strip=True)
-        if len(txt) > 30 and not txt.endswith("..."):
-          pilnas_ivadas = txt
-          sib.decompose()
-          break
+    # 2. Pagrindinės nuotraukos prierašas / antraštė (Caption)
+    img_caption = ""
+    for cap_sel in [
+        "figure.article__media figcaption",
+        ".article__media .figcaption",
+        ".article__header figcaption",
+        ".section--evidence figcaption",
+        ".media__caption",
+        ".caption",
+        "article figcaption",
+        "figcaption",
+    ]:
+        cap_elem = soup.select_one(cap_sel)
+        if cap_elem:
+            cap_txt = re.sub(
+                r"\s+", " ", cap_elem.get_text(" ", strip=True)
+            ).strip()
+            if len(cap_txt) > 3:
+                img_caption = cap_txt
+                break
 
-  # 4. Autentiškas straipsnio tekstas (be jokių nutraukimų)
-  paragraphs = []
-  content_blocks = soup.select(
-      "div.article__text, div.section--evidence .section__content"
-  )
-  if not content_blocks:
-    content_blocks = soup.select("article")
+    # Jei nerado <figcaption>, patikriname pagrindinės nuotraukos alt atributą
+    if not img_caption:
+        main_img = soup.select_one(
+            "figure.article__media img, .article__header img,"
+            " .section--evidence img, article img"
+        )
+        if main_img and main_img.get("alt"):
+            alt_txt = main_img.get("alt").strip()
+            if len(alt_txt) > 3:
+                img_caption = alt_txt
 
-  for block in content_blocks:
-    for unwanted in block.select(
-        "script, style, .audio-player, .related-articles, figure"
-    ):
-      unwanted.decompose()
+    # 3. PILNA įžanga tiesiai iš HTML puslapio struktūros (be og:description nukirpimų!)
+    pilnas_ivadas = ""
 
-    for elem in block.find_all(["p", "h2", "h3", "blockquote"]):
-      text_check = elem.get_text(" ", strip=True)
-      if not text_check:
-        continue
-      if text_check.lower().startswith("taip pat skaitykite"):
-        continue
+    for sel in [
+        ".article__subtitle",
+        ".article__occhiello",
+        ".article__lead",
+        ".article__abstract",
+        ".section--evidence .article__summary",
+        "div.article__header p",
+        "header p",
+    ]:
+        elem = soup.select_one(sel)
+        if elem:
+            txt = elem.get_text(" ", strip=True)
+            if len(txt) > 25 and not txt.endswith("..."):
+                pilnas_ivadas = txt
+                elem.decompose()
+                break
 
-      inner_html = "".join(str(child) for child in elem.contents).strip()
-      paragraphs.append(f"<{elem.name}>{inner_html}</{elem.name}>")
+    if not pilnas_ivadas:
+        h1 = soup.find("h1")
+        if h1:
+            for sib in h1.find_next_siblings(["div", "p", "h2"]):
+                if sib.name == "div" and "article__text" in (
+                    sib.get("class") or []
+                ):
+                    break
+                txt = sib.get_text(" ", strip=True)
+                if len(txt) > 30 and not txt.endswith("..."):
+                    pilnas_ivadas = txt
+                    sib.decompose()
+                    break
 
-    if paragraphs:
-      break
+    # 4. Autentiškas straipsnio tekstas (be jokių nutraukimų)
+    paragraphs = []
+    content_blocks = soup.select(
+        "div.article__text, div.section--evidence .section__content"
+    )
+    if not content_blocks:
+        content_blocks = soup.select("article")
 
-  pilnas_html = "\n".join(paragraphs)
-  return pilnas_html, pilnas_ivadas, img_url, img_caption
+    for block in content_blocks:
+        for unwanted in block.select(
+            "script, style, .audio-player, .related-articles, figure"
+        ):
+            unwanted.decompose()
+
+        for elem in block.find_all(["p", "h2", "h3", "blockquote"]):
+            text_check = elem.get_text(" ", strip=True)
+            if not text_check:
+                continue
+            if text_check.lower().startswith("taip pat skaitykite"):
+                continue
+
+            inner_html = "".join(str(child) for child in elem.contents).strip()
+            paragraphs.append(f"<{elem.name}>{inner_html}</{elem.name}>")
+
+        if paragraphs:
+            break
+
+    pilnas_html = "\n".join(paragraphs)
+    return pilnas_html, pilnas_ivadas, img_url, img_caption
 
 
 def gauti_arba_sukurti_zyma(tag_name, headers):
-  """Suranda esamą žymos ID pagal pavadinimą arba sukuria naują."""
-  encoded_name = urllib.parse.quote(tag_name)
-  url = f"https://www.bernardinai.lt/wp-json/wp/v2/tags?search={encoded_name}&per_page=30"
-  try:
-    req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req) as resp:
-      tags = json.loads(resp.read().decode("utf-8"))
-      for t in tags:
-        if t.get("name", "").strip().lower() == tag_name.strip().lower():
-          return int(t["id"])
-  except Exception:
-    pass
-
-  try:
-    create_url = "https://www.bernardinai.lt/wp-json/wp/v2/tags"
-    payload = json.dumps({"name": tag_name}).encode("utf-8")
-    h = headers.copy()
-    h["Content-Type"] = "application/json; charset=utf-8"
-    req = urllib.request.Request(
-        create_url, data=payload, headers=h, method="POST"
-    )
-    with urllib.request.urlopen(req) as resp:
-      new_tag = json.loads(resp.read().decode("utf-8"))
-      return int(new_tag["id"])
-  except urllib.error.HTTPError as e:
+    """Suranda esamą žymos ID pagal pavadinimą arba sukuria naują."""
+    encoded_name = urllib.parse.quote(tag_name)
+    url = f"https://www.bernardinai.lt/wp-json/wp/v2/tags?search={encoded_name}&per_page=30"
     try:
-      err_json = json.loads(e.read().decode("utf-8"))
-      if err_json.get("code") == "term_exists":
-        return int(err_json["data"]["term_id"])
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            tags = json.loads(resp.read().decode("utf-8"))
+            for t in tags:
+                if t.get("name", "").strip().lower() == tag_name.strip().lower():
+                    return int(t["id"])
     except Exception:
-      pass
-  except Exception:
-    pass
-  return None
+        pass
 
-
-def ikelti_nuotrauka_i_wp(img_url, img_caption, wp_headers, idx):
-  """Parsiunčia nuotrauką iš Vatican News, įkelia į Bernardinai.lt ir priskiria jos antraštę (Caption)."""
-  if not img_url or not img_url.startswith("http"):
+    try:
+        create_url = "https://www.bernardinai.lt/wp-json/wp/v2/tags"
+        payload = json.dumps({"name": tag_name}).encode("utf-8")
+        h = headers.copy()
+        h["Content-Type"] = "application/json; charset=utf-8"
+        req = urllib.request.Request(
+            create_url, data=payload, headers=h, method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            new_tag = json.loads(resp.read().decode("utf-8"))
+            return int(new_tag["id"])
+    except urllib.error.HTTPError as e:
+        try:
+            err_json = json.loads(e.read().decode("utf-8"))
+            if err_json.get("code") == "term_exists":
+                return int(err_json["data"]["term_id"])
+        except Exception:
+            pass
+    except Exception:
+        pass
     return None
-  try:
-    img_req = urllib.request.Request(
-        img_url,
-        headers={
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0"
-            ),
-            "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
-        },
-    )
-    with urllib.request.urlopen(img_req, timeout=20) as resp:
-      img_data = resp.read()
 
-    ext = ".jpg"
-    mime_type = "image/jpeg"
-    if ".png" in img_url.lower():
-      ext = ".png"
-      mime_type = "image/png"
-    elif ".webp" in img_url.lower():
-      ext = ".webp"
-      mime_type = "image/webp"
 
-    media_headers = wp_headers.copy()
-    media_headers["Content-Type"] = mime_type
-    media_headers["Content-Disposition"] = (
-        f'attachment; filename="vatican_news_{idx}{ext}"'
-    )
+def ikelti_nuotrauka_i_wp(img_url, img_caption, post_title, wp_headers, idx):
+    """Parsiunčia nuotrauką iš Vatican News, įkelia į Bernardinai.lt ir priskiria jos Title, Alt bei Caption."""
+    if not img_url or not img_url.startswith("http"):
+        return None
+    try:
+        img_req = urllib.request.Request(
+            img_url,
+            headers={
+                "User-Agent": INTERNAL_USER_AGENT,
+                "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+            },
+        )
+        with urllib.request.urlopen(img_req, timeout=20) as resp:
+            img_data = resp.read()
 
-    req_media = urllib.request.Request(
-        "https://www.bernardinai.lt/wp-json/wp/v2/media",
-        data=img_data,
-        headers=media_headers,
-        method="POST",
-    )
-    with urllib.request.urlopen(req_media) as resp_media:
-      media_json = json.loads(resp_media.read().decode("utf-8"))
-      media_id = int(media_json.get("id"))
+        ext = ".jpg"
+        mime_type = "image/jpeg"
+        if ".png" in img_url.lower():
+            ext = ".png"
+            mime_type = "image/png"
+        elif ".webp" in img_url.lower():
+            ext = ".webp"
+            mime_type = "image/webp"
 
-    # Jei turime nuotraukos prierašą (antraštę), įrašome jį į įkeltos nuotraukos Caption ir Alt laukelius
-    if media_id and img_caption:
-      try:
-        meta_headers = wp_headers.copy()
-        meta_headers["Content-Type"] = "application/json; charset=utf-8"
-        caption_payload = {
-            "caption": img_caption,
-            "alt_text": img_caption,
-            "description": img_caption,
-        }
-        req_cap = urllib.request.Request(
-            f"https://www.bernardinai.lt/wp-json/wp/v2/media/{media_id}",
-            data=json.dumps(caption_payload).encode("utf-8"),
-            headers=meta_headers,
+        media_headers = wp_headers.copy()
+        media_headers["Content-Type"] = mime_type
+        media_headers["Content-Disposition"] = (
+            f'attachment; filename="vatican_news_{idx}{ext}"'
+        )
+
+        req_media = urllib.request.Request(
+            "https://www.bernardinai.lt/wp-json/wp/v2/media",
+            data=img_data,
+            headers=media_headers,
             method="POST",
         )
-        urllib.request.urlopen(req_cap, timeout=15).read()
-      except Exception as e_cap:
-        print(f"Nepavyko priskirti nuotraukos antraštės: {e_cap}")
+        with urllib.request.urlopen(req_media, timeout=30) as resp_media:
+            media_json = json.loads(resp_media.read().decode("utf-8"))
+            media_id = int(media_json.get("id"))
 
-    return media_id
-  except Exception as e:
-    print(f"Nepavyko įkelti nuotraukos ({img_url}): {e}")
-    return None
+        # Užpildome nuotraukos Title, Alt Text ir Caption
+        if media_id:
+            try:
+                galutinis_alt = img_caption if img_caption else post_title
+                galutinis_cap = (
+                    img_caption
+                    if img_caption
+                    else f"{post_title}. „Vatican Media“ nuotr."
+                )
+                meta_headers = wp_headers.copy()
+                meta_headers["Content-Type"] = "application/json; charset=utf-8"
+                caption_payload = {
+                    "title": post_title,
+                    "caption": galutinis_cap,
+                    "alt_text": galutinis_alt,
+                    "description": galutinis_cap,
+                }
+                req_cap = urllib.request.Request(
+                    f"https://www.bernardinai.lt/wp-json/wp/v2/media/{media_id}",
+                    data=json.dumps(caption_payload).encode("utf-8"),
+                    headers=meta_headers,
+                    method="POST",
+                )
+                urllib.request.urlopen(req_cap, timeout=20).read()
+            except Exception as e_cap:
+                print(f"Nepavyko priskirti nuotraukos antraštės: {e_cap}")
+
+        return media_id
+    except urllib.error.HTTPError as e:
+        print(
+            f"Nepavyko įkelti nuotraukos ({img_url}) - HTTP {e.code}:"
+            f" {e.read().decode('utf-8', errors='ignore')}"
+        )
+        return None
+    except Exception as e:
+        print(f"Nepavyko įkelti nuotraukos ({img_url}): {e}")
+        return None
 
 
 def main():
-  if not (WP_USER and WP_PASS):
-    print("KLAIDA: Nėra WP_USERNAME arba WP_APP_PASSWORD aplinkos kintamųjų.")
-    return
-
-  auth_str = f"{WP_USER.strip()}:{WP_PASS.replace(' ', '').strip()}"
-  basic_val = (
-      f"Basic {base64.b64encode(auth_str.encode('utf-8')).decode('utf-8')}"
-  )
-  wp_headers = {
-      "Authorization": basic_val,
-      "X-HTTP-Authorization": basic_val,
-      "REDIRECT_HTTP_AUTHORIZATION": basic_val,
-      "User-Agent": (
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0"
-          " Safari/537.36"
-      ),
-      "X-Bnd-Automate": CF_KEY,
-  }
-
-  # Paruošiame standartines žymas
-  tag_ids = []
-  for zymos_pav in ["Vatican News", "Vatikanas"]:
-    tid = gauti_arba_sukurti_zyma(zymos_pav, wp_headers)
-    if tid:
-      tag_ids.append(tid)
-
-  publikuoti_url = uzkrauti_publikuotus()
-  print("Tikrinamas Vatican News RSS srautas...")
-  feed = feedparser.parse(VATICAN_RSS_URL)
-
-  if not feed.entries:
-    print("RSS srautas tuščias arba nepasiekiamas.")
-    return
-
-  naujausi_irasai = feed.entries[:MAX_FEED_ITEMS_TO_CHECK]
-  laiko_riba = datetime.datetime.now(timezone.utc) - timedelta(
-      hours=MAX_AGE_HOURS
-  )
-
-  ikeltu_skaicius = 0
-  for idx, entry in enumerate(reversed(naujausi_irasai)):
-    if ikeltu_skaicius >= MAX_ARTICLES_PER_RUN:
-      break
-
-    link = getattr(entry, "link", "").strip()
-    title = getattr(entry, "title", "").strip()
-    rss_desc = getattr(entry, "description", "").strip()
-
-    if not link or link in publikuoti_url:
-      continue
-
-    if hasattr(entry, "published_parsed") and entry.published_parsed:
-      pub_dt = datetime.datetime(
-          *entry.published_parsed[:6], tzinfo=timezone.utc
-      )
-      if pub_dt < laiko_riba:
+    if not (WP_USER and WP_PASS):
         print(
-            "Praleidžiamas senas straipsnis"
-            f" ({pub_dt.strftime('%Y-%m-%d %H:%M')}): {title}"
+            "KLAIDA: Nėra WP_USERNAME arba WP_APP_PASSWORD aplinkos kintamųjų."
         )
-        continue
+        return
 
-    print(f"\n>>> Ruošiamas straipsnis: {title}")
-    try:
-      pilnas_html, pilnas_ivadas, img_url, img_caption = (
-          istraukti_vatikano_straipsni(link)
-      )
+    auth_str = f"{WP_USER.strip()}:{WP_PASS.replace(' ', '').strip()}"
+    basic_val = (
+        f"Basic {base64.b64encode(auth_str.encode('utf-8')).decode('utf-8')}"
+    )
+    wp_headers = {
+        "Authorization": basic_val,
+        "X-HTTP-Authorization": basic_val,
+        "REDIRECT_HTTP_AUTHORIZATION": basic_val,
+        "User-Agent": INTERNAL_USER_AGENT,
+        "X-Bnd-Automate": CF_KEY,
+        "Referer": "https://www.bernardinai.lt/",
+    }
 
-      # Nenaudojame RSS aprašymo, jei jame tekstas nukirptas su '...'
-      if not pilnas_ivadas and rss_desc:
-        svarus_rss = re.sub(r"<[^>]+>", "", rss_desc).strip()
-        if not svarus_rss.endswith("..."):
-          pilnas_ivadas = svarus_rss
+    # Paruošiame standartines žymas
+    tag_ids = []
+    for zymos_pav in ["Vatican News", "Vatikanas"]:
+        tid = gauti_arba_sukurti_zyma(zymos_pav, wp_headers)
+        if tid and tid not in tag_ids:
+            tag_ids.append(tid)
 
-      if not pilnas_html or len(pilnas_html) < 100:
-        pilnas_html = f"<p>{pilnas_ivadas}</p>"
+    publikuoti_url = uzkrauti_publikuotus()
+    print("Tikrinamas Vatican News RSS srautas...")
+    feed = feedparser.parse(VATICAN_RSS_URL)
 
-      # 1. META APRAŠYMAS (ištraukai): iki 140 simbolių, pilnas baigtinis sakinys
-      meta_aprasymas_140 = formuoti_meta_iki_140(pilnas_ivadas, pilnas_html)
+    if not feed.entries:
+        print("RSS srautas tuščias arba nepasiekiamas.")
+        return
 
-      # 2. STRAIPSNIO TEKSTAS: įdedame 100% pilną įžangą kaip įprastą pastraipą (BE Bold / <strong>)
-      svarus_tekstas_patikrai = re.sub(r"<[^>]+>", "", pilnas_html).strip()
-      if (
-          pilnas_ivadas
-          and not pilnas_ivadas.endswith("...")
-          and pilnas_ivadas[:40] not in svarus_tekstas_patikrai
-      ):
-        pilnas_html = f"<p>{pilnas_ivadas}</p>\n" + pilnas_html
+    naujausi_irasai = feed.entries[:MAX_FEED_ITEMS_TO_CHECK]
+    laiko_riba = datetime.datetime.now(timezone.utc) - timedelta(
+        hours=MAX_AGE_HOURS
+    )
 
-      # PRIVALOMA DO-FOLLOW NUORODA PABAIGOJE (be žodžio „Šaltinis“ ir be Bold)
-      saltinio_blokas = f'\n<p><a href="{link}">{link}</a></p>'
-      galutinis_html = pilnas_html + saltinio_blokas
+    ikeltu_skaicius = 0
+    for idx, entry in enumerate(reversed(naujausi_irasai)):
+        if ikeltu_skaicius >= MAX_ARTICLES_PER_RUN:
+            break
 
-      # Įkeliame nuotrauką į WordPress kartu su jos antrašte (Caption)
-      featured_media_id = ikelti_nuotrauka_i_wp(
-          img_url, img_caption, wp_headers, idx
-      )
+        link = getattr(entry, "link", "").strip()
+        title = getattr(entry, "title", "").strip()
+        rss_desc = getattr(entry, "description", "").strip()
 
-      payload_wp = {
-          "title": title,
-          "content": galutinis_html,
-          "excerpt": (
-              meta_aprasymas_140
-          ),  # Standartinė WP ištrauka iki 140 simbolių
-          "status": PUBLISH_STATUS,
-          "categories": [WP_CATEGORY_ID],  # 24: Bažnyčia pasaulyje
-          "tags": tag_ids,
-          "meta": {
-              "_yoast_wpseo_metadesc": (
-                  meta_aprasymas_140
-              )  # Yoast SEO meta aprašymas iki 140 simbolių
-          },
-          "acf": {
-              "short_description": (
-                  meta_aprasymas_140
-              ),  # Trumpas aprašymas kortelėms (iki 140 simbolių, baigtinis sakinys)
-              "author": (
-                  WP_ACF_AUTHOR_IDS
-              ),  # [858006, 8149]: Vatican News ir Bernardinai.lt
-              "sources": (
-                  WP_ACF_SOURCE_IDS
-              ),  # [59898]: Šaltiniai („sources“) -> Vatican News
-              "post_featured_image": (
-                  "1"
-              ),  # 1: Rodyti asociatyvią nuotrauką straipsnio viduje
-              "show_in_newest_posts": (
-                  "yes"
-              ),  # 13 laukas: yes : Rodyti Naujienose
-              "show_on_homepage": (
-                  "no"
-              ),  # 12 laukas: no : Nerodyti „Redakcija rekomenduoja“
-          },
-      }
+        if not link or link in publikuoti_url:
+            continue
 
-      if featured_media_id:
-        payload_wp["featured_media"] = featured_media_id
+        if hasattr(entry, "published_parsed") and entry.published_parsed:
+            pub_dt = datetime.datetime(
+                *entry.published_parsed[:6], tzinfo=timezone.utc
+            )
+            if pub_dt < laiko_riba:
+                print(
+                    "Praleidžiamas senas straipsnis"
+                    f" ({pub_dt.strftime('%Y-%m-%d %H:%M')}): {title}"
+                )
+                continue
 
-      post_headers = wp_headers.copy()
-      post_headers["Content-Type"] = "application/json; charset=utf-8"
+        print(f"\n>>> Ruošiamas straipsnis: {title}")
+        try:
+            pilnas_html, pilnas_ivadas, img_url, img_caption = (
+                istraukti_vatikano_straipsni(link)
+            )
 
-      req_wp = urllib.request.Request(
-          "https://www.bernardinai.lt/wp-json/wp/v2/posts",
-          data=json.dumps(payload_wp).encode("utf-8"),
-          headers=post_headers,
-          method="POST",
-      )
+            # Nenaudojame RSS aprašymo, jei jame tekstas nukirptas su '...'
+            if not pilnas_ivadas and rss_desc:
+                svarus_rss = re.sub(r"<[^>]+>", "", rss_desc).strip()
+                if not svarus_rss.endswith("..."):
+                    pilnas_ivadas = svarus_rss
 
-      with urllib.request.urlopen(req_wp) as resp_wp:
-        wp_data = json.loads(resp_wp.read().decode("utf-8"))
-        print(f">>> Sėkmingai įkeltas juodraštis: {wp_data.get('link')}")
-        print(
-            f"    Meta ištrauka ({len(meta_aprasymas_140)} simb.):"
-            f" {meta_aprasymas_140}"
-        )
-        if img_caption:
-          print(f"    Nuotraukos antraštė: {img_caption}")
-        issaugoti_publikuota(link)
-        ikeltu_skaicius += 1
+            if not pilnas_html or len(pilnas_html) < 100:
+                pilnas_html = f"<p>{pilnas_ivadas}</p>"
 
-    except urllib.error.HTTPError as e:
-      err_msg = e.read().decode("utf-8")
-      print(f">>> WordPress klaida ({e.code}) straipsniui '{title}': {err_msg}")
-    except Exception as e:
-      print(f">>> Klaida apdorojant '{title}': {e}")
+            # 1. META APRAŠYMAS (ištraukai): iki 140 simbolių, pilnas baigtinis sakinys
+            meta_aprasymas_140 = formuoti_meta_iki_140(
+                pilnas_ivadas, pilnas_html
+            )
 
-  print(f"\nBaigta. Iš viso naujai įkelta straipsnių: {ikeltu_skaicius}")
+            # 2. STRAIPSNIO TEKSTAS: įdedame 100% pilną įžangą kaip įprastą pastraipą (BE Bold / <strong>)
+            svarus_tekstas_patikrai = re.sub(
+                r"<[^>]+>", "", pilnas_html
+            ).strip()
+            if (
+                pilnas_ivadas
+                and not pilnas_ivadas.endswith("...")
+                and pilnas_ivadas[:40] not in svarus_tekstas_patikrai
+            ):
+                pilnas_html = f"<p>{pilnas_ivadas}</p>\n" + pilnas_html
+
+            # PRIVALOMA DO-FOLLOW NUORODA PABAIGOJE (be žodžio „Šaltinis“ ir be Bold)
+            saltinio_blokas = f'\n<p><a href="{link}">{link}</a></p>'
+            galutinis_html = pilnas_html + saltinio_blokas
+
+            # Įkeliame nuotrauką į WordPress kartu su jos antrašte (Caption) ir Alt
+            featured_media_id = ikelti_nuotrauka_i_wp(
+                img_url, img_caption, title, wp_headers, idx
+            )
+
+            seo_title = f"{title} | Bernardinai.lt"
+            focus_kw = "Vatikanas"
+
+            payload_wp = {
+                "title": title,
+                "content": galutinis_html,
+                "excerpt": meta_aprasymas_140,
+                "status": PUBLISH_STATUS,
+                "categories": [WP_CATEGORY_ID],  # 24: Bažnyčia pasaulyje
+                "tags": tag_ids,
+                "meta": {
+                    "_yoast_wpseo_focuskw": focus_kw,
+                    "_yoast_wpseo_title": seo_title,
+                    "_yoast_wpseo_metadesc": meta_aprasymas_140,
+                    "short_description": meta_aprasymas_140,
+                    "post_featured_image": "1",
+                    "show_in_newest_posts": "yes",
+                    "show_on_homepage": "no",
+                },
+                "acf": {
+                    "short_description": meta_aprasymas_140,
+                    "author": WP_ACF_AUTHOR_IDS,
+                    "sources": WP_ACF_SOURCE_IDS,
+                    "post_featured_image": "1",
+                    "show_in_newest_posts": "yes",
+                    "show_on_homepage": "no",
+                },
+            }
+
+            if featured_media_id:
+                payload_wp["featured_media"] = featured_media_id
+
+            post_headers = wp_headers.copy()
+            post_headers["Content-Type"] = "application/json; charset=utf-8"
+
+            req_wp = urllib.request.Request(
+                "https://www.bernardinai.lt/wp-json/wp/v2/posts",
+                data=json.dumps(payload_wp).encode("utf-8"),
+                headers=post_headers,
+                method="POST",
+            )
+
+            with urllib.request.urlopen(req_wp, timeout=30) as resp_wp:
+                wp_data = json.loads(resp_wp.read().decode("utf-8"))
+                print(
+                    f">>> Sėkmingai įkeltas juodraštis: {wp_data.get('link')}"
+                )
+                print(
+                    f"    Meta ištrauka ({len(meta_aprasymas_140)} simb.):"
+                    f" {meta_aprasymas_140}"
+                )
+                if img_caption:
+                    print(f"    Nuotraukos antraštė: {img_caption}")
+                issaugoti_publikuota(link)
+                ikeltu_skaicius += 1
+
+        except urllib.error.HTTPError as e:
+            err_msg = e.read().decode("utf-8", errors="ignore")
+            print(
+                f">>> WordPress klaida ({e.code}) straipsniui '{title}':"
+                f" {err_msg}"
+            )
+        except Exception as e:
+            print(f">>> Klaida apdorojant '{title}': {e}")
+
+    print(f"\nBaigta. Iš viso naujai įkelta straipsnių: {ikeltu_skaicius}")
 
 
 if __name__ == "__main__":
-  main()
+    main()
