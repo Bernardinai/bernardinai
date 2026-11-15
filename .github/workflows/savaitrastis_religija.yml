@@ -41,7 +41,6 @@ jobs:
       - name: 5. Generuojamas religijos savaitrastis
         env:
           MAILERLITE_API_KEY: ${{ secrets.MAILERLITE_API_KEY }}
-          # Jei paleidžia cron-job.org (repository_dispatch), perduodame 'schedule' ir 'true', kad išleistų tikrą numerį:
           EVENT_NAME: ${{ github.event_name == 'repository_dispatch' && 'schedule' || github.event_name }}
           TIKRAS_LEIDINYS: ${{ github.event_name == 'repository_dispatch' && 'true' || github.event.inputs.tikras_leidinys }}
           WP_USERNAME: ${{ secrets.WP_USERNAME }}
@@ -65,8 +64,9 @@ jobs:
             done
           fi
 
-      - name: 7. Patogus PDF atsiuntimas per Actions langa (Atsargine kopija)
+      - name: 7. Patogus PDF atsiuntimas per Actions langa (Tik naujausias PDF!)
         uses: actions/upload-artifact@v4
         with:
           name: religijos-savaitrastis-pdf
-          path: archyvas/
+          path: archyvas/*/*religijos_savaitrastis_*.pdf
+          retention-days: 14
