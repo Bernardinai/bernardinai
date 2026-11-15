@@ -14,44 +14,92 @@ import urllib.request
 from weasyprint import HTML
 from zoneinfo import ZoneInfo
 
-# Bendras User-Agent su Cloudflare Skip raktu visoms užklausoms į bernardinai.lt
+# =========================================================================
+# 1. BENDROS ANTRAŠTĖS IR 100 % SUDERINAMAS WEASYPRINT 68+ FETCHERIS
+# =========================================================================
 INTERNAL_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    " (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Bernardinai-Internal-Agent-x9K2"
+    " (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Bernardinai-Internal-Agent-x9K2"
 )
+cf_key = os.environ.get("CF_AUTOMATION_KEY", "").strip()
 
 feedparser.USER_AGENT = INTERNAL_USER_AGENT
 
+COMMON_IMG_HEADERS = {
+    "User-Agent": INTERNAL_USER_AGENT,
+    "Accept": "image/webp,image/apng,image/jpeg,image/png,image/*,*/*;q=0.8",
+    "Referer": "https://www.bernardinai.lt/",
+}
+if cf_key:
+    COMMON_IMG_HEADERS["X-Bnd-Automate"] = cf_key
+
+
+def atsisiusti_paveiksleli_su_atsarga(url, timeout=20):
+    """Atsisiunčia nuotrauką tiesiogiai su CF raktu, o nepavykus – per weserv.nl proxy."""
+    clean_url = url.split("?")[0] if "bernardinai.lt/wp-content/uploads/" in url else url
+    try:
+        req = urllib.request.Request(clean_url, headers=COMMON_IMG_HEADERS)
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = resp.read()
+            mime = resp.headers.get_content_type() or "image/jpeg"
+            if len(data) > 500:
+                return data, mime, resp.geturl()
+    except Exception as e1:
+        print(f"Tiesioginis nuotraukos siuntimas nepavyko ({clean_url}): {e1}. Bandoma per proxy...")
+
+    # Atsarginis kelias per weserv.nl (konvertuoja į JPG, apeina bet kokį blokavimą)
+    no_proto = re.sub(r"^https?://", "", clean_url)
+    proxy_url = f"https://images.weserv.nl/?url={urllib.parse.quote(no_proto)}&output=jpg&w=1200&q=85"
+    req_p = urllib.request.Request(proxy_url, headers={"User-Agent": INTERNAL_USER_AGENT})
+    with urllib.request.urlopen(req_p, timeout=timeout) as resp:
+        return resp.read(), "image/jpeg", proxy_url
+
+
 try:
-    # WeasyPrint 68.0+ oficialus būdas su Cloudflare User-Agent ir Accept antraštėmis
     from weasyprint.urls import URLFetcher
-    weasyprint_url_fetcher = URLFetcher(
-        headers={
-            "User-Agent": INTERNAL_USER_AGENT,
-            "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
-        }
-    )
+
+    class BernardinaiURLFetcher(URLFetcher):
+        def fetch(self, url, headers=None):
+            if url.startswith("http"):
+                try:
+                    return super().fetch(url, headers=COMMON_IMG_HEADERS)
+                except Exception:
+                    clean_u = re.sub(r"^https?://", "", url.split("?")[0])
+                    proxy_u = f"https://images.weserv.nl/?url={urllib.parse.quote(clean_u)}&output=jpg&w=1200&q=85"
+                    return super().fetch(proxy_u, headers={"User-Agent": INTERNAL_USER_AGENT})
+            return super().fetch(url, headers=headers)
+
+    weasyprint_url_fetcher = BernardinaiURLFetcher(headers=COMMON_IMG_HEADERS, timeout=20)
 except ImportError:
-    # Senesnėms WeasyPrint (<68.0) versijoms
     from weasyprint import default_url_fetcher
-    def weasyprint_url_fetcher(url, timeout=10, ssl_context=None):
+
+    def weasyprint_url_fetcher(url, timeout=20, ssl_context=None):
         if url.startswith("http"):
-            req = urllib.request.Request(
-                url,
-                headers={
-                    "User-Agent": INTERNAL_USER_AGENT,
-                    "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
-                },
-            )
-            with urllib.request.urlopen(req, timeout=timeout, context=ssl_context) as resp:
-                return {
-                    "string": resp.read(),
-                    "mime_type": resp.headers.get_content_type(),
-                    "encoding": resp.headers.get_content_charset(),
-                    "redirected_url": resp.geturl(),
-                }
+            data, mime, redir = atsisiusti_paveiksleli_su_atsarga(url, timeout=timeout)
+            return {
+                "string": data,
+                "mime_type": mime,
+                "encoding": None,
+                "redirected_url": redir,
+            }
         return default_url_fetcher(url, timeout=timeout, ssl_context=ssl_context)
 
+
+def nuskaityti_rss_srauta(rss_url):
+    """Nuskaito RSS srautą su X-Bnd-Automate ir User-Agent antraštėmis."""
+    try:
+        req = urllib.request.Request(rss_url, headers=COMMON_IMG_HEADERS)
+        with urllib.request.urlopen(req, timeout=25) as resp:
+            raw_xml = resp.read()
+            return feedparser.parse(raw_xml)
+    except Exception as e:
+        print(f"Įspėjimas skaitant RSS ({rss_url}): {e}")
+        return feedparser.parse(rss_url)
+
+
+# =========================================================================
+# 2. LAIKO IR NUMERIO NUSTATYMAS (SU LEIDIMU PERRAŠYTI PER WORKFLOW_DISPATCH)
+# =========================================================================
 event_name = os.environ.get("EVENT_NAME", "")
 force_real = os.environ.get("TIKRAS_LEIDINYS", "false").lower() == "true"
 is_real_run = (event_name == "schedule") or force_real
@@ -105,8 +153,12 @@ if is_real_run:
 
                 if saved_year == current_year:
                     if last_run_date == today_str:
-                        print(">>> Šios dienos numeris jau buvo išleistas! Stabdome procesą, kad išvengtume dublikatų.")
-                        sys.exit(0)
+                        if event_name == "workflow_dispatch" and force_real:
+                            print(f">>> Rankinis pergeneravimas: naudojamas šios dienos numeris {saved_num}.")
+                            numeris = saved_num
+                        else:
+                            print(">>> Šios dienos numeris jau buvo išleistas! Stabdome procesą, kad išvengtume dublikatų.")
+                            sys.exit(0)
                     else:
                         numeris = saved_num + 1
                 else:
@@ -264,7 +316,6 @@ def apdoroti_straipsni(entry, is_main=True):
         if hasattr(entry, "source") and hasattr(entry.source, "title"):
             saltinis = entry.source.title
 
-    # Tikslus autoriaus (-ių) nustatymas su taisyklinga lietuviška skyryba
     autorius = ""
     if hasattr(entry, "authors") and entry.authors:
         names = [a.get("name", "").strip() for a in entry.authors if isinstance(a, dict) and a.get("name")]
@@ -415,7 +466,7 @@ for puslapis in range(1, 10):
         "https://www.bernardinai.lt/feed/mailerlite-religija/?paged="
         f"{puslapis}"
     )
-    feed = feedparser.parse(rss_url)
+    feed = nuskaityti_rss_srauta(rss_url)
     if not feed.entries:
         break
     for entry in feed.entries:
@@ -429,7 +480,7 @@ for puslapis in range(1, 10):
         "https://www.bernardinai.lt/feed/mailerlite-religija-visi/?paged="
         f"{puslapis}"
     )
-    feed = feedparser.parse(rss_url)
+    feed = nuskaityti_rss_srauta(rss_url)
     if not feed.entries:
         break
     for entry in feed.entries:
@@ -448,7 +499,7 @@ print(
 if len(pagrindiniai_straipsniai) == 0 and len(kiti_straipsniai) == 0:
     print(">>> GRIEŽTA KLAIDA: Nerasta nė vieno straipsnio! Procesas stabdomas, kad nebūtų išsiųstas tuščias leidinys.")
     sys.exit(1)
-    
+
 cover_bg_image = ""
 for straipsnis in reversed(pagrindiniai_straipsniai):
     if straipsnis.get("image"):
@@ -888,10 +939,7 @@ if api_key:
         headers={
             "X-MailerLite-ApiKey": api_key,
             "Content-Type": "application/json",
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                " (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"
-            ),
+            "User-Agent": INTERNAL_USER_AGENT,
         },
     )
     try:
@@ -917,11 +965,7 @@ if api_key:
                     headers={
                         "X-MailerLite-ApiKey": api_key,
                         "Content-Type": "application/json",
-                        "User-Agent": (
-                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-                            " AppleWebKit/537.36 (KHTML, like Gecko)"
-                            " Chrome/110.0.0.0 Safari/537.36"
-                        ),
+                        "User-Agent": INTERNAL_USER_AGENT,
                     },
                     method="PUT",
                 )
@@ -936,11 +980,7 @@ if api_key:
                         headers={
                             "X-MailerLite-ApiKey": api_key,
                             "Content-Type": "application/json",
-                            "User-Agent": (
-                                "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-                                " AppleWebKit/537.36 (KHTML, like Gecko)"
-                                " Chrome/110.0.0.0 Safari/537.36"
-                            ),
+                            "User-Agent": INTERNAL_USER_AGENT,
                         },
                         method="POST",
                     )
@@ -970,15 +1010,13 @@ else:
     )
 
 # =========================================================================
-# WORDPRESS PUBLIKAVIMAS SU PILNAIS ACF LAUKAIS IR ŽYMA
+# 3. WORDPRESS PUBLIKAVIMAS SU PILNAIS ACF LAUKAIS IR ŽYMA
 # =========================================================================
 wp_user = os.environ.get("WP_USERNAME")
 wp_pass = os.environ.get("WP_APP_PASSWORD")
 wp_category = int(os.environ.get("WP_CATEGORY_ID_RELIGIJA", 65204))
 wp_acf_author_id = 8149
-cf_key = os.environ.get("CF_AUTOMATION_KEY", "")
 
-# Žymos pavadinimas šiam savaitraščiui
 ZYMOS_PAVADINIMAS = "Bernardinai.lt religijos naujienų ir tikėjimo savaitraštis"
 
 
@@ -1041,45 +1079,27 @@ if wp_user and wp_pass:
         "X-HTTP-Authorization": basic_val,
         "REDIRECT_HTTP_AUTHORIZATION": basic_val,
         "User-Agent": INTERNAL_USER_AGENT,
+        "Referer": "https://www.bernardinai.lt/",
         "X-Bnd-Automate": cf_key,
     }
 
     # 1. Gauname žymos ID
     tag_id = gauti_arba_sukurti_zyma(ZYMOS_PAVADINIMAS, wp_headers)
 
-    # 2. Parsiunčiame ir įkeliame titulinę nuotrauką
+    # 2. Parsiunčiame ir įkeliame titulinę nuotrauką (su atsarginiu proxy)
     featured_media_id = None
     if cover_bg_image and cover_bg_image.startswith("http"):
         try:
             svara_img_url = isvalyti_img_url(cover_bg_image)
-            if "bernardinai.lt/wp-content/uploads/" in svara_img_url:
-                svara_img_url = svara_img_url.split("?")[0]
-
             print(f"Atsisiunčiama viršelio nuotrauka iš: {svara_img_url}")
 
-            img_headers = {
-                "User-Agent": INTERNAL_USER_AGENT,
-                "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
-            }
-            if cf_key:
-                img_headers["X-Bnd-Automate"] = cf_key
-
-            img_req = urllib.request.Request(
-                svara_img_url,
-                headers=img_headers,
-            )
-            with urllib.request.urlopen(img_req) as resp:
-                image_data = resp.read()
+            image_data, mime_type, final_img_u = atsisiusti_paveiksleli_su_atsarga(svara_img_url)
 
             ext = ".jpg"
-            mime_type = "image/jpeg"
-            url_lower = svara_img_url.lower()
-            if ".webp" in url_lower:
+            if "webp" in mime_type:
                 ext = ".webp"
-                mime_type = "image/webp"
-            elif ".png" in url_lower:
+            elif "png" in mime_type:
                 ext = ".png"
-                mime_type = "image/png"
 
             failo_varda = f"religijos_savaitrastis_cover_{today_str}{ext}"
             media_headers = wp_headers.copy()
@@ -1140,8 +1160,8 @@ if wp_user and wp_pass:
         "acf": {
             "short_description": trumpa_istrauka,
             "author": [wp_acf_author_id],
-            "show_on_homepage": "yes",      # 12 laukas: yes : Rodyti ("Redakcija rekomenduoja")
-            "post_featured_image": "1",     # 22 laukas: 1 : Rodyti (Asociatyvios nuotraukos rodymas straipsnyje)
+            "show_on_homepage": "yes",
+            "post_featured_image": "1",
         },
     }
 
