@@ -445,6 +445,10 @@ print(
     f" {len(kiti_straipsniai)} papildomų straipsnių."
 )
 
+if len(pagrindiniai_straipsniai) == 0 and len(kiti_straipsniai) == 0:
+    print(">>> GRIEŽTA KLAIDA: Nerasta nė vieno straipsnio! Procesas stabdomas, kad nebūtų išsiųstas tuščias leidinys.")
+    sys.exit(1)
+    
 cover_bg_image = ""
 for straipsnis in reversed(pagrindiniai_straipsniai):
     if straipsnis.get("image"):
