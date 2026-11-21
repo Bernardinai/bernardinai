@@ -1,8 +1,10 @@
+import argparse
 import base64
 import datetime
 from datetime import timedelta
-import feedparser
+import io
 import json
+import logging
 import os
 import re
 import sys
@@ -11,101 +13,121 @@ import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
-from weasyprint import HTML
 from zoneinfo import ZoneInfo
 
+import feedparser
+from weasyprint import HTML
+
+try:
+    from PIL import Image
+
+    HAS_PIL = True
+except ImportError:
+    HAS_PIL = False
+
 # =========================================================================
-# 1. BENDROS ANTRAŠTĖS IR 100 % SUDERINAMAS WEASYPRINT 68+ FETCHERIS
+# KONFIGŪRACIJA IR SAUGOS KONSTANTOS
 # =========================================================================
+LT_TZ = ZoneInfo("Europe/Vilnius")
+
+CF_SECRET_KEY = os.environ.get(
+    "CF_AUTOMATION_KEY", "BernardinuNaujienlaiskisLabaiSlapt@00"
+).strip()
 INTERNAL_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    " (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Bernardinai-Internal-Agent-x9K2"
+    " (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    " Bernardinai-Naujienlaiskis-Bot Bernardinai-Internal-Agent-x9K2"
 )
-cf_key = os.environ.get("CF_AUTOMATION_KEY", "").strip()
 
 feedparser.USER_AGENT = INTERNAL_USER_AGENT
 
-COMMON_IMG_HEADERS = {
-    "User-Agent": INTERNAL_USER_AGENT,
-    "Accept": "image/webp,image/apng,image/jpeg,image/png,image/*,*/*;q=0.8",
-    "Referer": "https://www.bernardinai.lt/",
-}
-if cf_key:
-    COMMON_IMG_HEADERS["X-Bnd-Automate"] = cf_key
+MIN_PAGRINDINIAI_STR = int(os.environ.get("MIN_PAGRINDINIAI_STR", "1"))
+MIN_VISO_STR = int(os.environ.get("MIN_VISO_STR", "3"))
+MIN_TEKSTO_ILGIS = int(os.environ.get("MIN_TEKSTO_ILGIS", "200"))
 
 
-def atsisiusti_paveiksleli_su_atsarga(url, timeout=20):
-    """Atsisiunčia nuotrauką tiesiogiai su CF raktu, o nepavykus – per weserv.nl proxy."""
-    clean_url = url.split("?")[0] if "bernardinai.lt/wp-content/uploads/" in url else url
-    try:
-        req = urllib.request.Request(clean_url, headers=COMMON_IMG_HEADERS)
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = resp.read()
-            mime = resp.headers.get_content_type() or "image/jpeg"
-            if len(data) > 500:
-                return data, mime, resp.geturl()
-    except Exception as e1:
-        print(f"Tiesioginis nuotraukos siuntimas nepavyko ({clean_url}): {e1}. Bandoma per proxy...")
-
-    # Atsarginis kelias per weserv.nl (konvertuoja į JPG, apeina bet kokį blokavimą)
-    no_proto = re.sub(r"^https?://", "", clean_url)
-    proxy_url = f"https://images.weserv.nl/?url={urllib.parse.quote(no_proto)}&output=jpg&w=1200&q=85"
-    req_p = urllib.request.Request(proxy_url, headers={"User-Agent": INTERNAL_USER_AGENT})
-    with urllib.request.urlopen(req_p, timeout=timeout) as resp:
-        return resp.read(), "image/jpeg", proxy_url
-
-
-try:
-    from weasyprint.urls import URLFetcher
-
-    class BernardinaiURLFetcher(URLFetcher):
-        def fetch(self, url, headers=None):
-            if url.startswith("http"):
-                try:
-                    return super().fetch(url, headers=COMMON_IMG_HEADERS)
-                except Exception:
-                    clean_u = re.sub(r"^https?://", "", url.split("?")[0])
-                    proxy_u = f"https://images.weserv.nl/?url={urllib.parse.quote(clean_u)}&output=jpg&w=1200&q=85"
-                    return super().fetch(proxy_u, headers={"User-Agent": INTERNAL_USER_AGENT})
-            return super().fetch(url, headers=headers)
-
-    weasyprint_url_fetcher = BernardinaiURLFetcher(headers=COMMON_IMG_HEADERS, timeout=20)
-except ImportError:
-    from weasyprint import default_url_fetcher
-
-    def weasyprint_url_fetcher(url, timeout=20, ssl_context=None):
-        if url.startswith("http"):
-            data, mime, redir = atsisiusti_paveiksleli_su_atsarga(url, timeout=timeout)
-            return {
-                "string": data,
-                "mime_type": mime,
-                "encoding": None,
-                "redirected_url": redir,
-            }
-        return default_url_fetcher(url, timeout=timeout, ssl_context=ssl_context)
-
-
-def nuskaityti_rss_srauta(rss_url):
-    """Nuskaito RSS srautą su X-Bnd-Automate ir User-Agent antraštėmis."""
-    try:
-        req = urllib.request.Request(rss_url, headers=COMMON_IMG_HEADERS)
-        with urllib.request.urlopen(req, timeout=25) as resp:
-            raw_xml = resp.read()
-            return feedparser.parse(raw_xml)
-    except Exception as e:
-        print(f"Įspėjimas skaitant RSS ({rss_url}): {e}")
-        return feedparser.parse(rss_url)
+def kritine_klaida(pranesimas):
+    """Nedelsiant sustabdo procesą, kad nebūtų publikuotas ar išsiųstas nepilnas leidinys."""
+    print(f"\n>>> KRITINĖ APSAUGOS KLAIDA: {pranesimas}")
+    print(
+        ">>> Publikavimas, FTP kėlimas ir naujienlaiškio siuntimas"
+        " SUSTABDYTI."
+    )
+    sys.exit(1)
 
 
 # =========================================================================
-# 2. LAIKO IR NUMERIO NUSTATYMAS (SU LEIDIMU PERRAŠYTI PER WORKFLOW_DISPATCH)
+# PALEIDIMO PARAMETRŲ NUSKAITYMAS (ENV ARBA KOMANDINĖ EILUTĖ)
 # =========================================================================
-event_name = os.environ.get("EVENT_NAME", "")
-force_real = os.environ.get("TIKRAS_LEIDINYS", "false").lower() == "true"
-is_real_run = (event_name == "schedule") or force_real
+parser = argparse.ArgumentParser(
+    description="Bernardinai.lt Religijos savaitraščio generatorius"
+)
+parser.add_argument(
+    "--rezimas",
+    default="",
+    help="Paleidimo režimas: bandomasis | tikras | tik_atnaujinti_pdf",
+)
+parser.add_argument(
+    "--numeris",
+    default="",
+    help="Pasirinktinis leidinio numeris, pvz.: 47 arba 2026/47",
+)
+parser.add_argument(
+    "--data",
+    default="",
+    help="Pasirinktinė leidinio data YYYY-MM-DD, pvz.: 2026-11-22",
+)
+parser.add_argument(
+    "--naujienlaiskis",
+    default="",
+    help="Naujienlaiškio veiksmas: auto | siusti | juodrastis | nesiusti",
+)
+parser.add_argument(
+    "--wp",
+    default="",
+    help="WordPress įrašo veiksmas: auto | publish | draft | ne",
+)
+args, _ = parser.parse_known_args()
 
+event_name = os.environ.get("EVENT_NAME", "").strip()
+force_real_legacy = (
+    os.environ.get("TIKRAS_LEIDINYS", "false").strip().lower() == "true"
+)
+
+raw_rezimas = (
+    args.rezimas or os.environ.get("PALEIDIMO_REZIMAS", "")
+).strip().lower()
+
+if not raw_rezimas:
+    if event_name == "schedule" or force_real_legacy:
+        paleidimo_rezimas = "tikras"
+    else:
+        paleidimo_rezimas = "bandomasis"
+else:
+    rezimu_map = {
+        "bandomasis": "bandomasis",
+        "test": "bandomasis",
+        "draft": "bandomasis",
+        "tikras": "tikras",
+        "iprastas_tikras": "tikras",
+        "real": "tikras",
+        "publish": "tikras",
+        "tik_atnaujinti_pdf": "tik_atnaujinti_pdf",
+        "atnaujinti_pdf": "tik_atnaujinti_pdf",
+        "pdf_only": "tik_atnaujinti_pdf",
+    }
+    if raw_rezimas not in rezimu_map:
+        kritine_klaida(
+            f"Nežinomas PALEIDIMO_REZIMAS='{raw_rezimas}'. Galimos reikšmės:"
+            " bandomasis, tikras, tik_atnaujinti_pdf."
+        )
+    paleidimo_rezimas = rezimu_map[raw_rezimas]
+
+is_real_run = paleidimo_rezimas in ("tikras", "tik_atnaujinti_pdf")
+
+# Automatinio tvarkaraščio laiko patikra (tik schedule paleidimui)
 if event_name == "schedule":
-    lt_time = datetime.datetime.now(ZoneInfo("Europe/Vilnius"))
+    lt_time = datetime.datetime.now(LT_TZ)
     if not (6 <= lt_time.hour <= 10):
         print(
             f"Dabar Lietuvoje yra {lt_time.hour} val. Agentas ilsisi, nes"
@@ -113,9 +135,60 @@ if event_name == "schedule":
         )
         sys.exit(0)
 
-today = datetime.datetime.now()
-today_str = today.strftime("%Y-%m-%d")
-one_week_ago = today - timedelta(days=7)
+# Naujienlaiškio siuntimo režimas
+raw_nl = (
+    args.naujienlaiskis or os.environ.get("SIUSTI_NAUJIENLAISKI", "auto")
+).strip().lower()
+
+if raw_nl in ("", "auto"):
+    if paleidimo_rezimas == "tikras":
+        nl_rezimas = "siusti"
+    elif paleidimo_rezimas == "bandomasis":
+        nl_rezimas = "juodrastis"
+    else:  # tik_atnaujinti_pdf
+        nl_rezimas = "nesiusti"
+elif raw_nl in ("siusti", "true", "taip", "1", "yes", "send"):
+    nl_rezimas = "siusti"
+elif raw_nl in ("juodrastis", "draft"):
+    nl_rezimas = "juodrastis"
+elif raw_nl in ("nesiusti", "false", "ne", "0", "no", "none"):
+    nl_rezimas = "nesiusti"
+else:
+    kritine_klaida(
+        f"Nežinoma SIUSTI_NAUJIENLAISKI reikšmė: '{raw_nl}'. Galimos:"
+        " auto, siusti, juodrastis, nesiusti."
+    )
+
+if nl_rezimas == "siusti" and paleidimo_rezimas == "bandomasis":
+    kritine_klaida(
+        "Bandomuoju režimu (kai PDF nekeliamas į FTP serverį) draudžiama"
+        " išsiųsti tikrą naujienlaiškį prenumeratoriams!"
+    )
+
+# WordPress publikavimo režimas
+raw_wp = (args.wp or os.environ.get("PUBLIKUOTI_WP", "auto")).strip().lower()
+if raw_wp in ("", "auto"):
+    if paleidimo_rezimas == "tikras":
+        wp_rezimas = "publish"
+    elif paleidimo_rezimas == "bandomasis":
+        wp_rezimas = "draft"
+    else:  # tik_atnaujinti_pdf
+        wp_rezimas = "ne"
+elif raw_wp in ("publish", "true", "taip", "1"):
+    wp_rezimas = "publish"
+elif raw_wp in ("draft", "juodrastis"):
+    wp_rezimas = "draft"
+elif raw_wp in ("ne", "false", "0", "no", "none"):
+    wp_rezimas = "ne"
+else:
+    kritine_klaida(
+        f"Nežinoma PUBLIKUOTI_WP reikšmė: '{raw_wp}'. Galimos: auto, publish,"
+        " draft, ne."
+    )
+
+# =========================================================================
+# LEIDINIO DATOS IR NUMERIO NUSTATYMAS
+# =========================================================================
 menesiai = [
     "sausio",
     "vasario",
@@ -131,6 +204,35 @@ menesiai = [
     "gruodžio",
 ]
 
+custom_date_raw = (
+    args.data or os.environ.get("LEIDINIO_DATA_CUSTOM", "")
+).strip()
+custom_num_raw = (
+    args.numeris or os.environ.get("LEIDINIO_NUMERIS_CUSTOM", "")
+).strip()
+
+now_lt = datetime.datetime.now(LT_TZ).replace(tzinfo=None)
+
+if custom_date_raw:
+    try:
+        parsed_d = datetime.date.fromisoformat(custom_date_raw)
+        today = datetime.datetime(
+            parsed_d.year, parsed_d.month, parsed_d.day, 23, 59, 59
+        )
+    except ValueError:
+        kritine_klaida(
+            f"Neteisingas LEIDINIO_DATA_CUSTOM formatas '{custom_date_raw}'."
+            " Naudokite YYYY-MM-DD (pvz., 2026-11-22)."
+        )
+else:
+    today = now_lt
+
+today_str = today.strftime("%Y-%m-%d")
+start_date_obj = today.date() - timedelta(days=7)
+one_week_ago = datetime.datetime(
+    start_date_obj.year, start_date_obj.month, start_date_obj.day, 0, 0, 0
+)
+
 leidinio_data = f"{today.year} m. {menesiai[today.month - 1]} {today.day} d."
 savaites_laikotarpis = (
     f"{one_week_ago.year} m. {menesiai[one_week_ago.month - 1]}"
@@ -141,35 +243,177 @@ savaites_laikotarpis = (
 tracker_file = "leidinio_numeris_religija.txt"
 current_year = today.year
 numeris = 1
+saved_year = 0
+saved_num = 0
+last_run_date = ""
 
-if is_real_run:
-    if os.path.exists(tracker_file):
-        try:
-            with open(tracker_file, "r", encoding="utf-8") as f:
-                data = f.read().strip().split("/")
-                saved_year = int(data[0])
-                saved_num = int(data[1])
-                last_run_date = data[2] if len(data) == 3 else ""
+if os.path.exists(tracker_file):
+    try:
+        with open(tracker_file, "r", encoding="utf-8") as f:
+            t_parts = f.read().strip().split("/")
+            saved_year = int(t_parts[0])
+            saved_num = int(t_parts[1])
+            last_run_date = t_parts[2] if len(t_parts) >= 3 else ""
+    except Exception:
+        pass
 
-                if saved_year == current_year:
-                    if last_run_date == today_str:
-                        if event_name == "workflow_dispatch" and force_real:
-                            print(f">>> Rankinis pergeneravimas: naudojamas šios dienos numeris {saved_num}.")
-                            numeris = saved_num
-                        else:
-                            print(">>> Šios dienos numeris jau buvo išleistas! Stabdome procesą, kad išvengtume dublikatų.")
-                            sys.exit(0)
-                    else:
-                        numeris = saved_num + 1
-                else:
-                    numeris = 1
-        except Exception:
-            pass
+if custom_num_raw:
+    m_num = re.match(r"^(?:(\d{4})\s*/\s*)?(\d+)$", custom_num_raw)
+    if not m_num:
+        kritine_klaida(
+            f"Neteisingas LEIDINIO_NUMERIS_CUSTOM='{custom_num_raw}'."
+            " Įrašykite skaičių (pvz., 47) arba metus/numerį (pvz., 2026/47)."
+        )
+    if m_num.group(1):
+        current_year = int(m_num.group(1))
+    numeris = int(m_num.group(2))
+    leidinio_numeris = f"{current_year}/{numeris}"
+elif paleidimo_rezimas == "tikras":
+    if saved_year == current_year:
+        if last_run_date == today_str:
+            if event_name == "schedule":
+                print(
+                    ">>> Šios dienos numeris jau buvo išleistas!"
+                    " Stabdome automatinį procesą, kad išvengtume dublikatų."
+                )
+                sys.exit(0)
+            else:
+                kritine_klaida(
+                    f"Šios dienos ({today_str}) numeris jau buvo išleistas"
+                    f" ({saved_year}/{saved_num}). Jei norite tik pakeisti PDF"
+                    " failą, rinkitės PALEIDIMO_REZIMAS='tik_atnaujinti_pdf',"
+                    " arba nurodykite LEIDINIO_NUMERIS_CUSTOM."
+                )
+        numeris = saved_num + 1
+    else:
+        numeris = 1
+    leidinio_numeris = f"{current_year}/{numeris}"
+elif paleidimo_rezimas == "tik_atnaujinti_pdf":
+    if saved_year == current_year and saved_num > 0:
+        numeris = saved_num
+    else:
+        numeris = 1
     leidinio_numeris = f"{current_year}/{numeris}"
 else:
     leidinio_numeris = "Bandomasis"
 
-api_key = os.environ.get("MAILERLITE_API_KEY")
+print("=================================================================")
+print(f"LEIDINYS:               Religijos naujienų ir tikėjimo savaitraštis")
+print(f"PALEIDIMO REŽIMAS:      {paleidimo_rezimas}")
+print(f"LEIDINIO NUMERIS:       {leidinio_numeris}")
+print(f"LEIDINIO DATA:          {leidinio_data} ({today_str})")
+print(f"STRAIPSNIŲ INTERVALAS:  {savaites_laikotarpis}")
+print(f"WORDPRESS PUBLIKAVIMAS: {wp_rezimas}")
+print(f"NAUJIENLAIŠKIS:         {nl_rezimas}")
+print("=================================================================")
+
+# =========================================================================
+# PRIVALOMŲ PRISIJUNGIMŲ PATIKRA PRIEŠ PRADEDANT DARBĄ
+# =========================================================================
+api_key = os.environ.get("MAILERLITE_API_KEY", "").strip()
+ftp_server = os.environ.get("FTP_SERVER", "").strip()
+ftp_user = os.environ.get("FTP_USERNAME", "").strip()
+ftp_pass = os.environ.get("FTP_PASSWORD", "").strip()
+wp_user = os.environ.get("WP_USERNAME", "").strip()
+wp_pass = os.environ.get("WP_APP_PASSWORD", "").strip()
+
+if is_real_run and not (ftp_server and ftp_user and ftp_pass):
+    kritine_klaida(
+        "Tikram leidimui arba PDF atnaujinimui privalomi FTP_SERVER,"
+        " FTP_USERNAME ir FTP_PASSWORD duomenys!"
+    )
+
+if nl_rezimas in ("siusti", "juodrastis") and not api_key:
+    kritine_klaida(
+        f"Pasirinktas naujienlaiškio režimas '{nl_rezimas}', bet nerastas"
+        " MAILERLITE_API_KEY!"
+    )
+
+if wp_rezimas in ("publish", "draft") and not (wp_user and wp_pass):
+    if wp_rezimas == "publish":
+        kritine_klaida(
+            "Pasirinktas WordPress publikavimas, bet nerasti WP_USERNAME arba"
+            " WP_APP_PASSWORD!"
+        )
+    else:
+        print(
+            ">>> ĮSPĖJIMAS: WP_USERNAME/WP_APP_PASSWORD nerasti, bandomasis WP"
+            " juodraštis nebus kuriamas."
+        )
+        wp_rezimas = "ne"
+
+wp_headers = {
+    "User-Agent": INTERNAL_USER_AGENT,
+    "X-Bnd-Automate": CF_SECRET_KEY,
+    "Referer": "https://www.bernardinai.lt/",
+}
+if wp_user and wp_pass:
+    auth_str = f"{wp_user}:{wp_pass.replace(' ', '')}"
+    basic_val = (
+        f"Basic {base64.b64encode(auth_str.encode('utf-8')).decode('utf-8')}"
+    )
+    wp_headers.update(
+        {
+            "Authorization": basic_val,
+            "X-HTTP-Authorization": basic_val,
+            "REDIRECT_HTTP_AUTHORIZATION": basic_val,
+        }
+    )
+
+# =========================================================================
+# PAGALBINĖS FUNKCIJOS IR SAUGUS NUOTRAUKŲ PARSIUNTIMAS / PATIKRA
+# =========================================================================
+def uzkoduoti_url_saugiai(url):
+    """Saugiai užkoduoja lietuviškas raides, tarpus ir spec. simbolius URL adrese."""
+    if not url:
+        return ""
+    parts = urllib.parse.urlsplit(url.strip())
+    clean_path = urllib.parse.quote(
+        urllib.parse.unquote(parts.path), safe="/:@!$&'()*+,;=-._~"
+    )
+    clean_query = urllib.parse.quote(
+        urllib.parse.unquote(parts.query), safe="=&:@!$'()*+,;-._~%"
+    )
+    return urllib.parse.urlunsplit(
+        (parts.scheme or "https", parts.netloc, clean_path, clean_query, "")
+    )
+
+
+try:
+    from weasyprint.urls import URLFetcher
+
+    weasyprint_url_fetcher = URLFetcher(
+        headers={
+            "User-Agent": INTERNAL_USER_AGENT,
+            "X-Bnd-Automate": CF_SECRET_KEY,
+            "Referer": "https://www.bernardinai.lt/",
+            "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+        }
+    )
+except Exception:
+    from weasyprint import default_url_fetcher
+
+    def weasyprint_url_fetcher(url, timeout=20, ssl_context=None):
+        if url.startswith("http"):
+            req = urllib.request.Request(
+                uzkoduoti_url_saugiai(url),
+                headers={
+                    "User-Agent": INTERNAL_USER_AGENT,
+                    "X-Bnd-Automate": CF_SECRET_KEY,
+                    "Referer": "https://www.bernardinai.lt/",
+                    "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+                },
+            )
+            with urllib.request.urlopen(
+                req, timeout=timeout, context=ssl_context
+            ) as resp:
+                return {
+                    "string": resp.read(),
+                    "mime_type": resp.headers.get_content_type(),
+                    "encoding": resp.headers.get_content_charset(),
+                    "redirected_url": resp.geturl(),
+                }
+        return default_url_fetcher(url, timeout=timeout, ssl_context=ssl_context)
 
 
 def gauti_linksni(skaicius):
@@ -183,20 +427,20 @@ def gauti_linksni(skaicius):
         return "prenumeratoriams"
 
 
-def gauti_paskutines_kampanijos_gavejus(api_key):
-    if not api_key:
+def gauti_paskutines_kampanijos_gavejus(ml_key):
+    if not ml_key:
         return None
     try:
         url = "https://api.mailerlite.com/api/v2/campaigns/sent"
         req = urllib.request.Request(
             url,
             headers={
-                "X-MailerLite-ApiKey": api_key,
+                "X-MailerLite-ApiKey": ml_key,
                 "Content-Type": "application/json",
                 "User-Agent": "Mozilla/5.0",
             },
         )
-        with urllib.request.urlopen(req) as response:
+        with urllib.request.urlopen(req, timeout=20) as response:
             kampanijos = json.loads(response.read().decode("utf-8"))
             if kampanijos and len(kampanijos) > 0:
                 paskutine = kampanijos[0]
@@ -238,19 +482,185 @@ if os.path.exists(logo_failas):
     with open(logo_failas, "rb") as image_file:
         encoded_string = base64.b64encode(image_file.read()).decode("utf-8")
         logo_src = f"data:image/png;base64,{encoded_string}"
+else:
+    kritine_klaida(f"Nerastas logotipo failas '{logo_failas}'!")
 
 
 def isvalyti_img_url(url):
     if not url:
         return ""
+    url = url.replace("&#038;", "&").replace("&amp;", "&").strip()
     if "images.weserv.nl" in url and "url=" in url:
         match = re.search(r"url=([^&]+)", url)
         if match:
             url = urllib.parse.unquote(match.group(1))
-    url = url.replace("&#038;", "&")
     if url and not url.startswith("http"):
         url = "https://" + url.lstrip("/")
-    return url
+    return uzkoduoti_url_saugiai(url)
+
+
+def sukurti_email_img_url(clean_direct_url):
+    if not clean_direct_url:
+        return ""
+    if ".webp" in clean_direct_url.lower():
+        be_schemos = re.sub(r"^https?://", "", clean_direct_url, flags=re.I)
+        return (
+            "https://images.weserv.nl/?url="
+            f"{urllib.parse.quote(be_schemos, safe='')}&output=jpg&w=800&q=85"
+        )
+    return clean_direct_url
+
+
+def ar_tikri_paveikslelio_baitai(data):
+    if not data or len(data) < 400:
+        return False
+    if data[:3] == b"\xff\xd8\xff":
+        return True
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return True
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return True
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return True
+    return False
+
+
+nuotrauku_podelis = {}
+
+
+def parsiusti_ir_patikrinti_nuotrauka(raw_url, kontekstas=""):
+    """
+    Parsiunčia nuotrauką, patikrina jos vientisumą ir paruošia Base64 URI PDF generavimui.
+    Jei nuotraukos parsiųsti nepavyksta – nedelsiant stabdo visą skriptą!
+    """
+    clean_url = isvalyti_img_url(raw_url)
+    if not clean_url:
+        kritine_klaida(f"Tuščias nuotraukos adresas ({kontekstas})!")
+
+    if clean_url in nuotrauku_podelis:
+        return nuotrauku_podelis[clean_url]
+
+    be_schemos = re.sub(r"^https?://", "", clean_url, flags=re.I)
+    weserv_fallback = (
+        "https://images.weserv.nl/?url="
+        f"{urllib.parse.quote(be_schemos, safe='')}&output=jpg&w=1200&q=88"
+    )
+
+    kandidatai = [clean_url, weserv_fallback]
+    if "bernardinai.lt" in clean_url and "?" in clean_url:
+        kandidatai.insert(1, clean_url.split("?")[0])
+
+    parsiusti_baitai = None
+    paskutine_klaida = ""
+
+    for bandymo_url in kandidatai:
+        for _ in range(2):
+            try:
+                headers = {
+                    "User-Agent": INTERNAL_USER_AGENT,
+                    "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+                    "Referer": "https://www.bernardinai.lt/",
+                }
+                if "bernardinai.lt" in bandymo_url:
+                    headers["X-Bnd-Automate"] = CF_SECRET_KEY
+
+                req = urllib.request.Request(bandymo_url, headers=headers)
+                with urllib.request.urlopen(req, timeout=25) as resp:
+                    data = resp.read()
+                    if ar_tikri_paveikslelio_baitai(data):
+                        parsiusti_baitai = data
+                        break
+                    else:
+                        paskutine_klaida = (
+                            f"Gautas ne paveikslėlis ({len(data)} B,"
+                            f" Content-Type: {resp.headers.get_content_type()})"
+                        )
+            except Exception as e:
+                paskutine_klaida = str(e)
+                time.sleep(1.5)
+        if parsiusti_baitai:
+            break
+
+    if not parsiusti_baitai:
+        kritine_klaida(
+            f"Nepavyko parsiųsti nuotraukos [{kontekstas}] iš {clean_url}."
+            f" Priežastis: {paskutine_klaida}"
+        )
+
+    galutiniai_baitai = parsiusti_baitai
+    mime_type = "image/jpeg"
+
+    if HAS_PIL:
+        try:
+            with Image.open(io.BytesIO(parsiusti_baitai)) as im:
+                im.load()
+                if im.width > 1600:
+                    santykis = 1600.0 / float(im.width)
+                    naujas_aukstis = max(1, int(im.height * santykis))
+                    im = im.resize((1600, naujas_aukstis), Image.LANCZOS)
+
+                out_buf = io.BytesIO()
+                if im.mode in ("RGBA", "LA") or (
+                    im.mode == "P" and "transparency" in im.info
+                ):
+                    im.save(out_buf, format="PNG", optimize=True)
+                    mime_type = "image/png"
+                else:
+                    im.convert("RGB").save(
+                        out_buf, format="JPEG", quality=88, optimize=True
+                    )
+                    mime_type = "image/jpeg"
+                galutiniai_baitai = out_buf.getvalue()
+        except Exception as e:
+            kritine_klaida(
+                f"Sugadintas nuotraukos failas [{kontekstas}] ({clean_url}): {e}"
+            )
+    else:
+        if parsiusti_baitai[:8] == b"\x89PNG\r\n\x1a\n":
+            mime_type = "image/png"
+        elif (
+            parsiusti_baitai[:4] == b"RIFF"
+            and parsiusti_baitai[8:12] == b"WEBP"
+        ):
+            mime_type = "image/webp"
+
+    b64_str = base64.b64encode(galutiniai_baitai).decode("ascii")
+    rezultatas = {
+        "data_uri": f"data:{mime_type};base64,{b64_str}",
+        "email_url": sukurti_email_img_url(clean_url),
+        "clean_url": clean_url,
+        "bytes": galutiniai_baitai,
+        "mime": mime_type,
+    }
+    nuotrauku_podelis[clean_url] = rezultatas
+    return rezultatas
+
+
+def rasti_nuotrauka_per_wp_api(post_link):
+    """Jei RSS įraše nebuvo nuotraukos, bando ją surasti tiesiai per WP REST API pagal slug."""
+    slug = post_link.rstrip("/").split("/")[-1]
+    if not slug:
+        return ""
+    api_u = (
+        "https://www.bernardinai.lt/wp-json/wp/v2/posts"
+        f"?slug={urllib.parse.quote(slug)}&_embed=1"
+    )
+    try:
+        req = urllib.request.Request(api_u, headers=wp_headers)
+        with urllib.request.urlopen(req, timeout=20) as r:
+            arr = json.loads(r.read().decode("utf-8"))
+            if arr and isinstance(arr, list):
+                p = arr[0]
+                img = isvalyti_img_url(p.get("featured_image_src", ""))
+                if not img:
+                    emb = p.get("_embedded", {})
+                    media = emb.get("wp:featuredmedia", [])
+                    if media and isinstance(media[0], dict):
+                        img = isvalyti_img_url(media[0].get("source_url", ""))
+                return img
+    except Exception:
+        pass
+    return ""
 
 
 try:
@@ -273,43 +683,107 @@ except Exception as e:
             return """
             <div style="margin: 30px auto; padding: 15px; background-color: #fcfcfc; border: 1px dashed #ccc; border-radius: 6px; text-align: center; max-width: 500px;">
                 <div style="font-size: 13px; font-weight: bold; color: #444; text-transform: uppercase; margin-bottom: 5px;">Čia galėtų būti Jūsų reklama</div>
-                <div style="font-size: 13px; color: #666;">Kreipkitės: <a href="mailto:reklama@bernardinai.lt" style="color: #7a2222; font-weight: bold; text-decoration: none;">reklama@bernardinai.lt</a></div>
+                <div style="font-size: 13px; color: #666;">Kreipkitės: <a href="mailto:reklama@bernardinai.lt" style="color: #2b5c8f; font-weight: bold; text-decoration: none;">reklama@bernardinai.lt</a></div>
             </div>
             """
 
 
+# =========================================================================
+# STRAIPSNIŲ NUSKAITYMAS SU PILNUMO KONTROLE
+# =========================================================================
 matyti_url = set()
 pagrindiniai_straipsniai = []
 kiti_straipsniai = []
 
 
+def nuskaityti_rss_srauta(rss_url):
+    """
+    Nuskaito RSS srautą, išvalo XML valdymo šiukšles ir patikrina, ar XML nėra nukirptas.
+    Grąžina: (parsed_feed, status_code, klaidos_tekstas)
+    """
+    try:
+        req = urllib.request.Request(
+            rss_url,
+            headers={
+                "User-Agent": INTERNAL_USER_AGENT,
+                "X-Bnd-Automate": CF_SECRET_KEY,
+                "Referer": "https://www.bernardinai.lt/",
+                "Accept": "application/rss+xml, application/xml, text/xml, */*",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=25) as resp:
+            raw_xml = resp.read()
+            clean_xml = re.sub(
+                rb"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", b"", raw_xml
+            )
+            if b"</rss>" not in clean_xml.lower():
+                return (
+                    None,
+                    500,
+                    f"Gautas nepilnas (nukirptas) RSS XML iš {rss_url}!",
+                )
+            parsed = feedparser.parse(clean_xml)
+            if getattr(parsed, "bozo", False) and not parsed.entries:
+                return (
+                    None,
+                    500,
+                    f"Sugadinta RSS XML struktūra ({rss_url}):"
+                    f" {getattr(parsed, 'bozo_exception', '')}",
+                )
+            print(f"RSS {rss_url} -> rasta įrašų: {len(parsed.entries)}")
+            return parsed, 200, ""
+    except urllib.error.HTTPError as e:
+        print(f"HTTP klaida {e.code} nuskaitant {rss_url}: {e.reason}")
+        return None, e.code, f"HTTP {e.code}: {e.reason}"
+    except Exception as e:
+        print(f"Tinklo klaida nuskaitant {rss_url}: {e}")
+        return None, 0, str(e)
+
+
+def konvertuoti_rss_data_lt(entry, kontekstas=""):
+    if not getattr(entry, "published_parsed", None):
+        kritine_klaida(f"Straipsnis neturi publikavimo datos ({kontekstas})!")
+    pub_utc = datetime.datetime(
+        *entry.published_parsed[:6], tzinfo=datetime.timezone.utc
+    )
+    return pub_utc.astimezone(LT_TZ).replace(tzinfo=None)
+
+
 def apdoroti_straipsni(entry, is_main=True):
-    link = getattr(entry, "link", "#")
+    link = getattr(entry, "link", "").strip()
+    if not link or link == "#":
+        kritine_klaida("Rastas straipsnis be nuorodos (link)!")
+
     if link in matyti_url:
         return None
 
-    title_lower = getattr(entry, "title", "").lower()
+    raw_title = (
+        getattr(entry, "title", "").replace("\n", " ").replace("\r", "").strip()
+    )
+    if not raw_title:
+        kritine_klaida(f"Rastas straipsnis be pavadinimo ({link})!")
+
+    title_lower = raw_title.lower()
     if (
         "religijos naujienų" in title_lower
         or "tikėjimo savaitraštis" in title_lower
+        or "kultūros savaitraštis" in title_lower
         or "savaitraštis nr." in title_lower
     ):
-        print(
-            f"Praleidžiamas savaitraščio įrašas: {getattr(entry, 'title', '')}"
-        )
+        print(f"Praleidžiamas savaitraščio įrašas: {raw_title}")
         return None
 
-    try:
-        pub_date_obj = datetime.datetime(*entry.published_parsed[:6])
-        if pub_date_obj < one_week_ago:
-            return None
-        data_lt = (
-            f"{pub_date_obj.year} m. {menesiai[pub_date_obj.month - 1]}"
-            f" {pub_date_obj.day} d."
-        )
-    except Exception:
-        pub_date_obj = datetime.datetime.now()
-        data_lt = "Data nežinoma"
+    pub_date_obj = konvertuoti_rss_data_lt(entry, raw_title)
+
+    if pub_date_obj > today:
+        return None
+    if pub_date_obj < one_week_ago:
+        return "SENESNIS"
+
+    data_lt = (
+        f"{pub_date_obj.year} m. {menesiai[pub_date_obj.month - 1]}"
+        f" {pub_date_obj.day} d."
+    )
 
     saltinis = "Bernardinai.lt"
     if not is_main:
@@ -318,8 +792,16 @@ def apdoroti_straipsni(entry, is_main=True):
 
     autorius = ""
     if hasattr(entry, "authors") and entry.authors:
-        names = [a.get("name", "").strip() for a in entry.authors if isinstance(a, dict) and a.get("name")]
-        names = [n for n in names if n.lower() not in ["admin", "bernardinai.lt", "redakcija"]]
+        names = [
+            a.get("name", "").strip()
+            for a in entry.authors
+            if isinstance(a, dict) and a.get("name")
+        ]
+        names = [
+            n
+            for n in names
+            if n.lower() not in ["admin", "bernardinai.lt", "redakcija"]
+        ]
         if len(names) == 1:
             autorius = names[0]
         elif len(names) == 2:
@@ -345,9 +827,11 @@ def apdoroti_straipsni(entry, is_main=True):
             else:
                 autorius = raw_author
 
-    aprasymas = getattr(entry, "description", "")
+    if not autorius:
+        autorius = "Bernardinai.lt"
 
-    izanga_clean = re.sub("<[^<]+>", "", aprasymas)
+    aprasymas = getattr(entry, "description", "")
+    izanga_clean = re.sub("<[^<]+>", "", aprasymas).strip()
     izanga_clean = (
         izanga_clean[:250] + "..."
         if len(izanga_clean) > 250
@@ -355,10 +839,9 @@ def apdoroti_straipsni(entry, is_main=True):
     )
 
     tituline_nuotrauka = ""
-
     if hasattr(entry, "media_content") and entry.media_content:
         for media in entry.media_content:
-            if "url" in media:
+            if media.get("url"):
                 tituline_nuotrauka = isvalyti_img_url(media["url"])
                 break
 
@@ -368,10 +851,11 @@ def apdoroti_straipsni(entry, is_main=True):
         and entry.enclosures
     ):
         for enc in entry.enclosures:
-            if enc.get("type", "").startswith("image/") or enc.get(
-                "href", ""
-            ).endswith((".jpg", ".jpeg", ".png", ".webp")):
-                tituline_nuotrauka = isvalyti_img_url(enc.get("href", ""))
+            enc_url = enc.get("href") or enc.get("url") or ""
+            if enc.get("type", "").startswith("image/") or enc_url.lower().endswith(
+                (".jpg", ".jpeg", ".png", ".webp")
+            ):
+                tituline_nuotrauka = isvalyti_img_url(enc_url)
                 break
 
     if not tituline_nuotrauka:
@@ -392,11 +876,22 @@ def apdoroti_straipsni(entry, is_main=True):
                 paveikslelis_tekste.group(1)
             )
 
-    pilnas_tekstas = (
-        entry.content[0].value
-        if (hasattr(entry, "content") and len(entry.content) > 0)
-        else aprasymas
-    )
+    if not (
+        hasattr(entry, "content")
+        and len(entry.content) > 0
+        and entry.content[0].value
+    ):
+        kritine_klaida(
+            f"Straipsnyje „{raw_title}“ trūksta pilno teksto (content:encoded)!"
+        )
+
+    pilnas_tekstas = entry.content[0].value
+    grynasis_ilgis = len(re.sub(r"<[^>]+>", "", pilnas_tekstas).strip())
+    if grynasis_ilgis < MIN_TEKSTO_ILGIS:
+        kritine_klaida(
+            f"Straipsnio „{raw_title}“ tekstas neįprastai trumpas arba"
+            f" nukirptas ({grynasis_ilgis} simb.)!"
+        )
 
     if is_main:
         pilnas_tekstas = re.sub(r"<img[^>]*>", "", pilnas_tekstas)
@@ -448,7 +943,7 @@ def apdoroti_straipsni(entry, is_main=True):
 
     matyti_url.add(link)
     return {
-        "title": entry.title.replace("\n", " ").replace("\r", "").strip(),
+        "title": raw_title,
         "author": autorius,
         "source": saltinis,
         "date": data_lt,
@@ -460,58 +955,165 @@ def apdoroti_straipsni(entry, is_main=True):
     }
 
 
+def surinkti_srauto_straipsnius(feed_slug, is_main, tikslinis_sarasas):
+    puslapio_pirmieji_url = set()
+    for puslapis in range(1, 10):
+        rss_urls = [
+            (
+                f"https://www.bernardinai.lt/feed/{feed_slug}/?paged={puslapis}"
+                if puslapis > 1
+                else f"https://www.bernardinai.lt/feed/{feed_slug}/"
+            ),
+            (
+                f"https://www.bernardinai.lt/?feed={feed_slug}&paged={puslapis}"
+                if puslapis > 1
+                else f"https://www.bernardinai.lt/?feed={feed_slug}"
+            ),
+        ]
+
+        pasiektas_feed = None
+        paskutinis_kodas = 0
+        paskutine_kl = ""
+
+        for rss_url in rss_urls:
+            feed, status_code, kl_msg = nuskaityti_rss_srauta(rss_url)
+            paskutinis_kodas = status_code
+            paskutine_kl = kl_msg
+            if feed is not None:
+                pasiektas_feed = feed
+                break
+
+        if pasiektas_feed is None:
+            if puslapis > 1 and paskutinis_kodas == 404:
+                break
+            kritine_klaida(
+                f"Nepavyko nuskaityti RSS srauto '{feed_slug}' (puslapis"
+                f" {puslapis}): {paskutine_kl}"
+            )
+
+        if not pasiektas_feed.entries:
+            break
+
+        pirmas_link = getattr(pasiektas_feed.entries[0], "link", "")
+        if pirmas_link in puslapio_pirmieji_url:
+            break
+        puslapio_pirmieji_url.add(pirmas_link)
+
+        visi_senesni = True
+        for entry in pasiektas_feed.entries:
+            rez = apdoroti_straipsni(entry, is_main=is_main)
+            if rez == "SENESNIS":
+                continue
+            visi_senesni = False
+            if isinstance(rez, dict):
+                tikslinis_sarasas.append(rez)
+
+        if visi_senesni:
+            break
+
+
 print("Nuskaitomas pagrindinis RSS srautas (Religija)...")
-for puslapis in range(1, 10):
-    rss_url = (
-        "https://www.bernardinai.lt/feed/mailerlite-religija/?paged="
-        f"{puslapis}"
-    )
-    feed = nuskaityti_rss_srauta(rss_url)
-    if not feed.entries:
-        break
-    for entry in feed.entries:
-        straipsnis = apdoroti_straipsni(entry, is_main=True)
-        if straipsnis:
-            pagrindiniai_straipsniai.append(straipsnis)
+surinkti_srauto_straipsnius(
+    "mailerlite-religija", True, pagrindiniai_straipsniai
+)
 
 print("Nuskaitomas papildomas Religijos RSS srautas...")
-for puslapis in range(1, 10):
-    rss_url = (
-        "https://www.bernardinai.lt/feed/mailerlite-religija-visi/?paged="
-        f"{puslapis}"
-    )
-    feed = nuskaityti_rss_srauta(rss_url)
-    if not feed.entries:
-        break
-    for entry in feed.entries:
-        straipsnis = apdoroti_straipsni(entry, is_main=False)
-        if straipsnis:
-            kiti_straipsniai.append(straipsnis)
+surinkti_srauto_straipsnius(
+    "mailerlite-religija-visi", False, kiti_straipsniai
+)
 
 pagrindiniai_straipsniai.sort(key=lambda x: x["pub_date_obj"])
 kiti_straipsniai.sort(key=lambda x: x["pub_date_obj"])
 
+viso_straipsniu = len(pagrindiniai_straipsniai) + len(kiti_straipsniai)
 print(
     f"Iš viso atrinkta: {len(pagrindiniai_straipsniai)} pagrindinių ir"
     f" {len(kiti_straipsniai)} papildomų straipsnių."
 )
 
-if len(pagrindiniai_straipsniai) == 0 and len(kiti_straipsniai) == 0:
-    print(">>> GRIEŽTA KLAIDA: Nerasta nė vieno straipsnio! Procesas stabdomas, kad nebūtų išsiųstas tuščias leidinys.")
-    sys.exit(1)
+if len(pagrindiniai_straipsniai) < MIN_PAGRINDINIAI_STR:
+    kritine_klaida(
+        f"Rasta per mažai pagrindinių straipsnių"
+        f" ({len(pagrindiniai_straipsniai)}, reikalaujama bent"
+        f" {MIN_PAGRINDINIAI_STR})!"
+    )
 
-cover_bg_image = ""
-for straipsnis in reversed(pagrindiniai_straipsniai):
-    if straipsnis.get("image"):
-        cover_bg_image = straipsnis["image"]
-        break
+if viso_straipsniu < MIN_VISO_STR:
+    kritine_klaida(
+        f"Iš viso rasta tik {viso_straipsniu} straipsnių (reikalaujama bent"
+        f" {MIN_VISO_STR}). Galimai nepilnas srautas!"
+    )
 
-if not cover_bg_image:
-    for straipsnis in reversed(kiti_straipsniai):
-        if straipsnis.get("image"):
-            cover_bg_image = straipsnis["image"]
-            break
+# =========================================================================
+# GRIEŽTA VISŲ NUOTRAUKŲ PATIKRA IR PARUOŠIMAS (BASE64 PDF + EMAIL URL)
+# =========================================================================
+print("Tikrinamos ir parsiunčiamos visos leidinio nuotraukos...")
 
+visi_straipsniai = pagrindiniai_straipsniai + kiti_straipsniai
+for str_item in visi_straipsniai:
+    if not str_item.get("image"):
+        rastas = rasti_nuotrauka_per_wp_api(str_item["link"])
+        if rastas:
+            str_item["image"] = rastas
+        else:
+            kritine_klaida(
+                f"Straipsnis „{str_item['title']}“ neturi titulinės nuotraukos!"
+            )
+
+    img_info = parsiusti_ir_patikrinti_nuotrauka(
+        str_item["image"], kontekstas=f"Straipsnis: {str_item['title']}"
+    )
+    str_item["pdf_image_src"] = img_info["data_uri"]
+    str_item["email_image_url"] = img_info["email_url"]
+    str_item["raw_image_bytes"] = img_info["bytes"]
+    str_item["raw_image_mime"] = img_info["mime"]
+
+    def pakeisti_vidini_img(match):
+        pilna_zyma = match.group(0)
+        src_m = re.search(r'src=["\']([^"\']+)["\']', pilna_zyma, re.I)
+        if not src_m:
+            return ""
+        vid_info = parsiusti_ir_patikrinti_nuotrauka(
+            src_m.group(1),
+            kontekstas=f"Vidinė iliustracija straipsnyje: {str_item['title']}",
+        )
+        svari_zyma = re.sub(
+            r'\s+(?:srcset|sizes|loading|decoding)=["\'][^"\']*["\']',
+            "",
+            pilna_zyma,
+            flags=re.I,
+        )
+        svari_zyma = re.sub(
+            r'src=["\'][^"\']+["\']',
+            f'src="{vid_info["data_uri"]}"',
+            svari_zyma,
+            count=1,
+            flags=re.I,
+        )
+        return svari_zyma
+
+    if "<img" in str_item["content"].lower():
+        str_item["content"] = re.sub(
+            r"<img\b[^>]*>",
+            pakeisti_vidini_img,
+            str_item["content"],
+            flags=re.I,
+        )
+
+cover_article = pagrindiniai_straipsniai[-1]
+cover_bg_data_uri = cover_article["pdf_image_src"]
+cover_article_title = cover_article["title"]
+cover_raw_bytes = cover_article["raw_image_bytes"]
+cover_raw_mime = cover_article["raw_image_mime"]
+
+print(
+    f">>> Visos nuotraukos ({len(nuotrauku_podelis)} unikalios) sėkmingai"
+    " patikrintos ir paruoštos!"
+)
+
+# =========================================================================
+# PDF HTML FORMAVIMAS IR GENERAVIMAS
+# =========================================================================
 reklamos_indeksas = 0
 THEME_COLOR = "#2b5c8f"
 
@@ -587,11 +1189,11 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
 </head>
 <body>
     <div class="cover-page">
-        {f'<img src="{cover_bg_image}" class="bg-img">' if cover_bg_image else ''}
+        <img src="{cover_bg_data_uri}" class="bg-img">
         <div class="gradient-overlay"></div>
         
         <div class="top-bar">
-            {f'<img src="{logo_src}" class="logo-main">' if logo_src else '<div style="color:#111; font-size: 24pt; font-weight:bold;">Bernardinai.lt</div>'}
+            <img src="{logo_src}" class="logo-main">
         </div>
         
         <div class="cover-bottom-content">
@@ -614,8 +1216,16 @@ html_kodas = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
 """
 
 for i, straipsnis in enumerate(pagrindiniai_straipsniai):
-    autoriaus_span = f'<span class="toc-author" style="text-transform: uppercase;">{straipsnis["author"]}. </span>' if straipsnis["author"] else ""
-    html_kodas += f"""<li class="toc-item"><a href="#pagrindinis_{i}" class="toc-link">{autoriaus_span}<strong>{straipsnis['title']}</strong></a></li>"""
+    autoriaus_span = (
+        '<span class="toc-author" style="text-transform:'
+        f' uppercase;">{straipsnis["author"]}. </span>'
+        if straipsnis["author"]
+        else ""
+    )
+    html_kodas += (
+        f'<li class="toc-item"><a href="#pagrindinis_{i}"'
+        f' class="toc-link">{autoriaus_span}<strong>{straipsnis["title"]}</strong></a></li>'
+    )
 
 if kiti_straipsniai:
     html_kodas += """
@@ -624,8 +1234,16 @@ if kiti_straipsniai:
         <ul class="toc-list">
 """
     for i, straipsnis in enumerate(kiti_straipsniai):
-        autoriaus_span = f'<span class="toc-author" style="text-transform: uppercase;">{straipsnis["author"]}. </span>' if straipsnis["author"] else ""
-        html_kodas += f"""<li class="toc-item"><a href="#kitas_{i}" class="toc-link">{autoriaus_span}<strong>{straipsnis['title']}</strong></a></li>"""
+        autoriaus_span = (
+            '<span class="toc-author" style="text-transform:'
+            f' uppercase;">{straipsnis["author"]}. </span>'
+            if straipsnis["author"]
+            else ""
+        )
+        html_kodas += (
+            f'<li class="toc-item"><a href="#kitas_{i}"'
+            f' class="toc-link">{autoriaus_span}<strong>{straipsnis["title"]}</strong></a></li>'
+        )
 
 html_kodas += f"""
         </ul>
@@ -655,7 +1273,7 @@ for i, straipsnis in enumerate(pagrindiniai_straipsniai):
                 <div class="article-title">{straipsnis['title']}</div>
                 <div class="article-meta">{meta_eilute}</div>
             </div>
-            {f'<img src="{straipsnis["image"]}" class="article-image">' if straipsnis['image'] else ''}
+            <img src="{straipsnis['pdf_image_src']}" class="article-image">
         </div>
         <div class="article-columns">
             {straipsnis['content']}
@@ -685,16 +1303,22 @@ if kiti_straipsniai:
         meta_parts.append(f"Publikuota: {straipsnis['date']}")
         meta_eilute = " &nbsp;|&nbsp; ".join(meta_parts)
 
-        html_kodas += f"""
+        html_kodas += (
+            f"""
             <div class="other-article" id="kitas_{i}">
                 <div class="other-article-top-block">
                     <div class="other-article-title">{straipsnis['title']}</div>
                     <div class="other-article-meta">{meta_eilute}</div>
                 </div>
                 {straipsnis['content']}
+                """
+            + gauti_reklamos_bloka("religija", reklamos_indeksas, "pdf")
+            + """
                 <div class="back-to-toc"><a href="#turinys">↑ Grįžti į turinį</a></div>
             </div>
         """
+        )
+        reklamos_indeksas += 1
     html_kodas += """
         </div>
     </div>
@@ -702,7 +1326,7 @@ if kiti_straipsniai:
 
 html_kodas += f"""
     <div class="contacts-page">
-        <h1 style="border-bottom: 2px solid {THEME_COLOR}; padding-bottom: 10px; margin-bottom: 20px;">Redakcija ir kontaktai</h1>
+        <h1 style="border-bottom: 2px solid {THEME_COLOR}; padding-bottom: 10px; margin-bottom: 20px; font-size: 24pt; color: #111; text-transform: uppercase;">Redakcija ir kontaktai</h1>
         <div style="font-size: 11pt; line-height: 1.6; margin-bottom: 30px; text-align: left;">
             <strong>Interneto dienraštis „Bernardinai.lt“</strong><br>
             Veiklos pradžia – 2004 m. vasario 21 d.<br><br>
@@ -758,90 +1382,367 @@ metu_aplankas = f"archyvas/{current_year}"
 os.makedirs(metu_aplankas, exist_ok=True)
 pdf_archyvas = f"{metu_aplankas}/religijos_savaitrastis_{today_str}.pdf"
 
-print(f"Generuojamas PDF failas {current_year} metų archyvui...")
+
+class WeasyPrintImageErrorWatcher(logging.Handler):
+    def __init__(self):
+        super().__init__(level=logging.ERROR)
+        self.image_errors = []
+
+    def emit(self, record):
+        msg = self.format(record)
+        if "image" in msg.lower() or "failed to load" in msg.lower():
+            self.image_errors.append(msg)
+
+
+wp_logger = logging.getLogger("weasyprint")
+img_watcher = WeasyPrintImageErrorWatcher()
+wp_logger.addHandler(img_watcher)
+
+print(f"Generuojamas PDF failas: {pdf_archyvas}...")
 try:
-    HTML(string=html_kodas, url_fetcher=weasyprint_url_fetcher).write_pdf(pdf_archyvas)
-    print(f">>>> Sėkmingai sukurta: {pdf_archyvas}")
-except Exception as e:
-    print(">>> GRIEŽTA KLAIDA GENERUOJANT PDF:")
+    HTML(string=html_kodas, url_fetcher=weasyprint_url_fetcher).write_pdf(
+        pdf_archyvas
+    )
+except Exception:
     traceback.print_exc()
-    sys.exit(1)
+    kritine_klaida("Nepavyko sugeneruoti PDF failo!")
+
+if img_watcher.image_errors:
+    kritine_klaida(
+        "WeasyPrint pranešė apie neįkeltus paveikslėlius PDF viduje:"
+        f" {img_watcher.image_errors[0]}"
+    )
+
+if not os.path.exists(pdf_archyvas) or os.path.getsize(pdf_archyvas) < 50000:
+    kritine_klaida("Sugeneruotas PDF failas yra tuščias arba per mažas!")
+
+pdf_dydis_vietinis = os.path.getsize(pdf_archyvas)
+print(
+    f">>>> Sėkmingai sukurta: {pdf_archyvas}"
+    f" ({pdf_dydis_vietinis / (1024 * 1024):.2f} MB)"
+)
 
 # =========================================================================
-# FTP ĮKĖLIMAS SU APSAUGA NUO TIMEOUT IR RETRY MECHANIZMU
+# 1 ŽINGSNIS: FTP ĮKĖLIMAS SU 3 BANDYMŲ APSAUGA IR DYDŽIO PATIKRA
 # =========================================================================
 if is_real_run:
-    ftp_server = os.environ.get("FTP_SERVER", "").strip()
-    ftp_user = os.environ.get("FTP_USERNAME", "").strip()
-    ftp_pass = os.environ.get("FTP_PASSWORD", "").strip()
-    
-    if ftp_server and ftp_user and ftp_pass:
-        print(f">>> Pradedamas failo kėlimas į FTP serverį ({ftp_server})...")
-        import ftplib
-        
-        ftp_uploaded = False
-        for attempt in range(1, 4):
-            try:
-                print(f"Bandymas {attempt}/3 jungtis prie FTP...")
-                ftp = ftplib.FTP(timeout=45)
-                ftp.connect(ftp_server, 21)
-                ftp.login(user=ftp_user, passwd=ftp_pass)
-                ftp.set_pasv(True)
-                
-                try:
-                    ftp.cwd(str(current_year))
-                except ftplib.error_perm:
-                    ftp.mkd(str(current_year))
-                    ftp.cwd(str(current_year))
-                    
-                filename = os.path.basename(pdf_archyvas)
-                with open(pdf_archyvas, "rb") as file:
-                    ftp.storbinary(f"STOR {filename}", file)
-                
-                ftp.quit()
-                print(f">>> Sėkmingai įkelta į serverį: {filename}")
-                ftp_uploaded = True
-                break
-            except Exception as e:
-                print(f"Klaida bandyme {attempt}: {e}")
-                if attempt < 3:
-                    time.sleep(5)
-        
-        if not ftp_uploaded:
-            print(">>> GRIEŽTA KLAIDA: Nepavyko įkelti PDF į serverį po 3 bandymų!")
-            print(">>> PROCESAS NUTRAUKIAMAS. Laiškai nebus siunčiami.")
-            sys.exit(1)
-    else:
-        print(">>> ĮSPĖJIMAS: Nerasti FTP prisijungimo duomenys. Failas į serverį nekeliamas.")
+    print(f">>> Pradedamas PDF failo kėlimas į FTP serverį ({ftp_server})...")
+    import ftplib
 
-if is_real_run:
-    try:
-        with open(tracker_file, "w", encoding="utf-8") as f:
-            f.write(f"{current_year}/{numeris}/{today_str}")
-        print(
-            ">>> TIKRAS PALEIDIMAS: Leidinio numeris atnaujintas ir"
-            " išsaugotas."
-        )
-    except Exception as e:
-        print(f"Nepavyko išsaugoti numerio failo: {e}")
-else:
-    if not os.path.exists(tracker_file):
+    ftp_uploaded = False
+    paskutine_ftp_kl = ""
+
+    for attempt in range(1, 4):
         try:
-            with open(tracker_file, "w", encoding="utf-8") as f:
-                f.write(f"{current_year}/0/2000-01-01")
+            print(f"Bandymas {attempt}/3 jungtis prie FTP...")
+            ftp = ftplib.FTP(timeout=45)
+            ftp.connect(ftp_server, 21)
+            ftp.login(user=ftp_user, passwd=ftp_pass)
+            ftp.set_pasv(True)
+
+            try:
+                ftp.cwd(str(current_year))
+            except ftplib.error_perm:
+                ftp.mkd(str(current_year))
+                ftp.cwd(str(current_year))
+
+            filename = os.path.basename(pdf_archyvas)
+            esami_failai = []
+            try:
+                esami_failai = ftp.nlst()
+            except Exception:
+                pass
+
+            if filename in esami_failai:
+                print(
+                    f">>> FTP serveryje jau yra '{filename}' – failas bus"
+                    " perrašytas (atnaujintas)."
+                )
+
+            with open(pdf_archyvas, "rb") as file:
+                ftp.storbinary(f"STOR {filename}", file)
+
+            try:
+                ftp.voidcmd("TYPE I")
+                serverio_dydis = ftp.size(filename)
+                if serverio_dydis is not None and serverio_dydis < 50000:
+                    ftp.quit()
+                    raise RuntimeError(
+                        f"FTP serveryje įkeltas failas per mažas ({serverio_dydis} B)!"
+                    )
+            except RuntimeError:
+                raise
+            except Exception:
+                pass
+
+            ftp.quit()
+            print(f">>> Sėkmingai įkelta / atnaujinta FTP serveryje: {filename}")
+            ftp_uploaded = True
+            break
+        except Exception as e:
+            paskutine_ftp_kl = str(e)
+            print(f"Klaida FTP bandyme {attempt}: {e}")
+            if attempt < 3:
+                time.sleep(5)
+
+    if not ftp_uploaded:
+        kritine_klaida(
+            f"Nepavyko įkelti PDF į FTP serverį po 3 bandymų: {paskutine_ftp_kl}"
+        )
+
+pdf_url = (
+    f"https://www.bernardinai.lt/savaitrastis/{current_year}/"
+    f"religijos_savaitrastis_{today_str}.pdf"
+)
+
+# =========================================================================
+# 2 ŽINGSNIS: WORDPRESS PUBLIKAVIMAS ARBA ATNAUJINIMAS (PRIEŠ NAUJIENLAIŠKĮ!)
+# =========================================================================
+wp_religija_cat_id = 16  # Pagrindinė Religijos rubrika
+wp_savaitrastis_cat_id = int(os.environ.get("WP_CATEGORY_ID_RELIGIJA", 65204))
+wp_acf_author_id = 8149
+
+
+def gauti_arba_sukurti_zyma(tag_name, headers):
+    encoded_name = urllib.parse.quote(tag_name)
+    url = f"https://www.bernardinai.lt/wp-json/wp/v2/tags?search={encoded_name}&per_page=50"
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            tags = json.loads(resp.read().decode("utf-8"))
+            for t in tags:
+                if t.get("name", "").strip().lower() == tag_name.strip().lower():
+                    return int(t["id"])
+    except Exception as e:
+        print(f">>> Įspėjimas ieškant žymos '{tag_name}': {e}")
+
+    try:
+        create_url = "https://www.bernardinai.lt/wp-json/wp/v2/tags"
+        payload = json.dumps({"name": tag_name}).encode("utf-8")
+        h = headers.copy()
+        h["Content-Type"] = "application/json; charset=utf-8"
+        req = urllib.request.Request(
+            create_url, data=payload, headers=h, method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            new_tag = json.loads(resp.read().decode("utf-8"))
+            return int(new_tag["id"])
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode("utf-8")
+        try:
+            err_json = json.loads(err_body)
+            if err_json.get("code") == "term_exists":
+                term_id = err_json.get("data", {}).get("term_id")
+                if term_id:
+                    return int(term_id)
         except Exception:
             pass
+    except Exception:
+        pass
+    return None
+
+
+if wp_rezimas in ("publish", "draft"):
     print(
-        ">>> BANDOMASIS PALEIDIMAS: Naudotas 'Bandomasis' numeris, atmintis"
-        " neatnaujinama."
+        f"Ruošiamas informacinis įrašas Bernardinai.lt svetainėje"
+        f" (statusas: {wp_rezimas})..."
     )
 
-if api_key:
-    print("Kuriamas ir siunčiamas MailerLite laiškas...")
+    raktazodziai = [
+        "Bernardinai.lt religijos naujienų ir tikėjimo savaitraštis",
+        "tikėjimo savaitraštis",
+        "religija",
+        "tikėjimas",
+        "krikščionybė",
+    ]
+    tag_ids = []
+    for kw in raktazodziai:
+        tid = gauti_arba_sukurti_zyma(kw, wp_headers)
+        if tid and tid not in tag_ids:
+            tag_ids.append(tid)
 
-    pdf_url = (
-        f"https://www.bernardinai.lt/savaitrastis/{current_year}/religijos_savaitrastis_{today_str}.pdf"
+    irasas_pavadinimas = (
+        "Religijos naujienų ir tikėjimo savaitraštis Nr."
+        f" {leidinio_numeris} | {leidinio_data}"
     )
+    focus_keyphrase = "tikėjimo savaitraštis"
+    seo_title = (
+        f"Religijos ir tikėjimo savaitraštis Nr. {leidinio_numeris} |"
+        " Bernardinai.lt"
+    )
+    meta_aprasymas = (
+        "Naujausias „Bernardinai.lt“ religijos ir tikėjimo savaitraštis (Nr."
+        f" {leidinio_numeris}). Svarbiausi savaitės tekstai PDF formatu."
+    )[:140]
+
+    nuotraukos_alt = (
+        "Bernardinai.lt religijos naujienų ir tikėjimo savaitraštis Nr."
+        f" {leidinio_numeris}"
+    )
+    nuotraukos_antraste = (
+        "„Bernardinai.lt“ religijos naujienų ir tikėjimo savaitraštis (Nr."
+        f" {leidinio_numeris}). Viršelyje – iliustracija straipsniui"
+        f" „{cover_article_title}“."
+    )
+
+    featured_media_id = None
+    try:
+        ext = ".png" if cover_raw_mime == "image/png" else ".jpg"
+        failo_varda = f"religijos_savaitrastis_cover_{today_str}{ext}"
+        media_headers = wp_headers.copy()
+        media_headers["Content-Type"] = cover_raw_mime
+        media_headers["Content-Disposition"] = (
+            f'attachment; filename="{failo_varda}"'
+        )
+
+        req_media = urllib.request.Request(
+            "https://www.bernardinai.lt/wp-json/wp/v2/media",
+            data=cover_raw_bytes,
+            headers=media_headers,
+            method="POST",
+        )
+        with urllib.request.urlopen(req_media, timeout=30) as resp_media:
+            media_json = json.loads(resp_media.read().decode("utf-8"))
+            featured_media_id = media_json.get("id")
+            print(
+                ">>> Titulinė nuotrauka sėkmingai įkelta į WP! ID:"
+                f" {featured_media_id}"
+            )
+
+        if featured_media_id:
+            media_meta_payload = {
+                "title": irasas_pavadinimas,
+                "alt_text": nuotraukos_alt,
+                "caption": nuotraukos_antraste,
+                "description": nuotraukos_antraste,
+            }
+            meta_update_headers = wp_headers.copy()
+            meta_update_headers["Content-Type"] = (
+                "application/json; charset=utf-8"
+            )
+            req_media_update = urllib.request.Request(
+                f"https://www.bernardinai.lt/wp-json/wp/v2/media/{featured_media_id}",
+                data=json.dumps(media_meta_payload).encode("utf-8"),
+                headers=meta_update_headers,
+                method="POST",
+            )
+            urllib.request.urlopen(req_media_update, timeout=20).close()
+    except Exception as e:
+        kritine_klaida(
+            f"Nepavyko įkelti viršelio nuotraukos į WordPress Media biblioteką: {e}"
+        )
+
+    if not featured_media_id:
+        kritine_klaida("WordPress Media biblioteka negrąžino nuotraukos ID!")
+
+    temu_sarasas_html = "<h3>Šiame numeryje skaitykite:</h3><ul>"
+    for s in pagrindiniai_straipsniai:
+        temu_sarasas_html += (
+            f'<li><strong>{s["author"]}</strong>: <a'
+            f' href="{s["link"]}">{s["title"]}</a></li>'
+        )
+    temu_sarasas_html += "</ul>"
+
+    wp_html_turinys = f"""<p>Skaitytojams pateikiame interneto dienraščio „Bernardinai.lt“ <strong>religijos naujienų ir tikėjimo savaitraščio</strong> numerį ({leidinio_data}, Nr. {leidinio_numeris}). Šiame leidinyje rasite redaktorių atrinktus svarbiausius savaitės religijos, dvasingumo ir krikščioniško gyvenimo tekstus bei pokalbius. Leidinys paruoštas patogiam skaitymui žurnalo formatu.</p>
+{temu_sarasas_html}
+<p style="margin: 30px 0; text-align: center;">
+    <a href="{pdf_url}" target="_blank" rel="noopener noreferrer" style="background-color: {THEME_COLOR}; color: #ffffff; padding: 14px 28px; text-decoration: none; font-weight: bold; border-radius: 5px; display: inline-block; font-size: 16px;">
+        Atsisiųsti PDF savaitraštį
+    </a>
+</p>"""
+
+    kategorijos_sarasas = [wp_religija_cat_id]
+    if wp_savaitrastis_cat_id not in kategorijos_sarasas:
+        kategorijos_sarasas.append(wp_savaitrastis_cat_id)
+
+    norimas_slug = (
+        f"religijos-savaitrastis-nr-{current_year}-{numeris}-{today_str}"
+        if paleidimo_rezimas != "bandomasis" or custom_num_raw
+        else f"religijos-savaitrastis-bandomasis-{today_str}"
+    )
+
+    payload_wp = {
+        "title": irasas_pavadinimas,
+        "slug": norimas_slug,
+        "content": wp_html_turinys,
+        "excerpt": meta_aprasymas,
+        "status": wp_rezimas,
+        "featured_media": int(featured_media_id),
+        "categories": kategorijos_sarasas,
+        "tags": tag_ids,
+        "acf": {
+            "short_description": meta_aprasymas,
+            "author": [wp_acf_author_id],
+            "show_on_homepage": "yes",
+            "show_in_newest_posts": "no",
+            "show_on_homepage_media": "no",
+            "show_in_main_posts": 0,
+            "post_featured_image": "1",
+        },
+        "meta": {
+            "_yoast_wpseo_focuskw": focus_keyphrase,
+            "_yoast_wpseo_title": seo_title,
+            "_yoast_wpseo_metadesc": meta_aprasymas,
+            "short_description": meta_aprasymas,
+            "show_on_homepage": "yes",
+            "show_in_newest_posts": "no",
+            "post_featured_image": "1",
+        },
+    }
+
+    esamo_wp_id = None
+    try:
+        check_u = (
+            "https://www.bernardinai.lt/wp-json/wp/v2/posts"
+            f"?slug={urllib.parse.quote(norimas_slug)}&status=any"
+        )
+        req_chk = urllib.request.Request(check_u, headers=wp_headers)
+        with urllib.request.urlopen(req_chk, timeout=20) as r_chk:
+            rasti_ir = json.loads(r_chk.read().decode("utf-8"))
+            if rasti_ir and isinstance(rasti_ir, list):
+                esamo_wp_id = rasti_ir[0].get("id")
+    except Exception:
+        pass
+
+    wp_post_url = (
+        f"https://www.bernardinai.lt/wp-json/wp/v2/posts/{esamo_wp_id}"
+        if esamo_wp_id
+        else "https://www.bernardinai.lt/wp-json/wp/v2/posts"
+    )
+
+    post_headers = wp_headers.copy()
+    post_headers["Content-Type"] = "application/json; charset=utf-8"
+
+    req_wp = urllib.request.Request(
+        wp_post_url,
+        data=json.dumps(payload_wp).encode("utf-8"),
+        headers=post_headers,
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req_wp, timeout=30) as resp_wp:
+            wp_data = json.loads(resp_wp.read().decode("utf-8"))
+            post_link = wp_data.get("link", "Nuoroda nerasta")
+            veiksmas_txt = "atnaujintas" if esamo_wp_id else "sukurtas"
+            print(
+                f">>> Sėkmingai {veiksmas_txt} WordPress įrašas! URL: {post_link}"
+            )
+    except urllib.error.HTTPError as e:
+        err_msg = e.read().decode("utf-8")
+        kritine_klaida(
+            f"Nepavyko publikuoti įrašo WordPress (kodas {e.code}): {err_msg}"
+        )
+    except Exception as e:
+        kritine_klaida(f"Nepavyko publikuoti įrašo WordPress: {e}")
+else:
+    print(">>> WordPress įrašo kūrimas praleistas pagal pasirinktą režimą.")
+
+# =========================================================================
+# 3 ŽINGSNIS: MAILERLITE NAUJIENLAIŠKIO KŪRIMAS / SIUNTIMAS
+# =========================================================================
+if nl_rezimas in ("siusti", "juodrastis"):
+    print(f"Ruošiamas MailerLite laiškas (režimas: {nl_rezimas})...")
 
     email_html = f"""<!DOCTYPE html>
 <html>
@@ -875,7 +1776,7 @@ if api_key:
 
         email_html += f"""
         <div style="margin-bottom: 40px; padding-bottom: 20px; border-bottom: 1px solid #eee;">
-            {f'<img src="{straipsnis["image"]}" style="width: 100%; max-width: 600px; border-radius: 8px; margin-bottom: 15px;">' if straipsnis['image'] else ''}
+            <img src="{straipsnis['email_image_url']}" alt="{straipsnis['title']}" style="width: 100%; max-width: 600px; border-radius: 8px; margin-bottom: 15px;">
             <h3 style="margin: 0 0 10px 0;"><a href="{straipsnis['link']}" style="color: #111; text-decoration: none; font-size: 20px;">{straipsnis['title']}</a></h3>
             <div style="color: {THEME_COLOR}; font-size: 12px; font-weight: bold; margin-bottom: 10px; text-transform: uppercase;">{meta_mail_eilute}</div>
             <p style="color: #555; font-size: 15px; line-height: 1.5; margin: 0;">{straipsnis['excerpt']}</p>
@@ -898,13 +1799,14 @@ if api_key:
 
             email_html += f"""
             <div style="margin-bottom: 40px; padding-bottom: 20px; border-bottom: 1px solid #eee;">
-                {f'<img src="{straipsnis["image"]}" style="width: 100%; max-width: 600px; border-radius: 8px; margin-bottom: 15px;">' if straipsnis['image'] else ''}
+                <img src="{straipsnis['email_image_url']}" alt="{straipsnis['title']}" style="width: 100%; max-width: 600px; border-radius: 8px; margin-bottom: 15px;">
                 <h3 style="margin: 0 0 10px 0;"><a href="{straipsnis['link']}" style="color: #111; text-decoration: none; font-size: 20px;">{straipsnis['title']}</a></h3>
                 <div style="color: {THEME_COLOR}; font-size: 12px; font-weight: bold; margin-bottom: 10px; text-transform: uppercase;">{meta_mail_eilute}</div>
                 <p style="color: #555; font-size: 15px; line-height: 1.5; margin: 0;">{straipsnis['excerpt']}</p>
             </div>
             """
 
+    email_html += gauti_reklamos_bloka("religija", reklamos_indeksas, "email")
     email_html += f"""
         <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; text-align: center; font-size: 12px; color: #999;">
             ISSN 3120-9742<br>
@@ -918,12 +1820,14 @@ if api_key:
 </html>
 """
 
+    religija_group_id = int(
+        os.environ.get("MAILERLITE_GROUP_ID_RELIGIJA", 103032162)
+    )
     payload_campaign = {
         "type": "regular",
-        "groups": [103032162],
+        "groups": [religija_group_id],
         "subject": (
-            "Religijos naujienų ir tikėjimo savaitraštis |"
-            f" {leidinio_data}"
+            f"Religijos naujienų ir tikėjimo savaitraštis | {leidinio_data}"
         ),
         "from": "naujienlaiskis@bernardinai.lt",
         "from_name": (
@@ -943,258 +1847,107 @@ if api_key:
         },
     )
     try:
-        with urllib.request.urlopen(req_campaign) as response:
+        with urllib.request.urlopen(req_campaign, timeout=30) as response:
             campaign_data = json.loads(response.read().decode("utf-8"))
             campaign_id = campaign_data.get("id")
-            print(f">>> Kampanija sukurta. ID: {campaign_id}")
+            print(f">>> MailerLite kampanija sukurta. ID: {campaign_id}")
 
-            if campaign_id:
-                payload_content = {
-                    "html": email_html,
-                    "plain": (
-                        "Naujausias „Bernardinai.lt“ Religijos naujienų ir tikėjimo savaitraštis"
-                        " jau paruoštas!\n\nAtsisiųsti PDF galite čia:"
-                        f" {pdf_url}\n\nPeržiūrėti naršyklėje:"
-                        " {$url}\nAtsisakyti naujienlaiškio: {$unsubscribe}"
-                    ),
-                }
+            if not campaign_id:
+                kritine_klaida("MailerLite negrąžino kampanijos ID!")
 
-                req_content = urllib.request.Request(
-                    f"https://api.mailerlite.com/api/v2/campaigns/{campaign_id}/content",
-                    data=json.dumps(payload_content).encode("utf-8"),
+            payload_content = {
+                "html": email_html,
+                "plain": (
+                    "Naujausias „Bernardinai.lt“ Religijos naujienų ir tikėjimo"
+                    " savaitraštis jau paruoštas!\n\nAtsisiųsti PDF galite čia:"
+                    f" {pdf_url}\n\nPeržiūrėti naršyklėje:"
+                    " {$url}\nAtsisakyti naujienlaiškio: {$unsubscribe}"
+                ),
+            }
+
+            req_content = urllib.request.Request(
+                f"https://api.mailerlite.com/api/v2/campaigns/{campaign_id}/content",
+                data=json.dumps(payload_content).encode("utf-8"),
+                headers={
+                    "X-MailerLite-ApiKey": api_key,
+                    "Content-Type": "application/json",
+                    "User-Agent": INTERNAL_USER_AGENT,
+                },
+                method="PUT",
+            )
+
+            with urllib.request.urlopen(req_content, timeout=30):
+                print(">>> MailerLite laiško turinys įkeltas!")
+
+            if nl_rezimas == "siusti":
+                req_send = urllib.request.Request(
+                    f"https://api.mailerlite.com/api/v2/campaigns/{campaign_id}/actions/send",
+                    data=json.dumps({}).encode("utf-8"),
                     headers={
                         "X-MailerLite-ApiKey": api_key,
                         "Content-Type": "application/json",
                         "User-Agent": INTERNAL_USER_AGENT,
                     },
-                    method="PUT",
+                    method="POST",
                 )
-
-                with urllib.request.urlopen(req_content) as resp_content:
-                    print(">>> MailerLite laiško turinys įkeltas!")
-
-                if is_real_run:
-                    req_send = urllib.request.Request(
-                        f"https://api.mailerlite.com/api/v2/campaigns/{campaign_id}/actions/send",
-                        data=json.dumps({}).encode("utf-8"),
-                        headers={
-                            "X-MailerLite-ApiKey": api_key,
-                            "Content-Type": "application/json",
-                            "User-Agent": INTERNAL_USER_AGENT,
-                        },
-                        method="POST",
-                    )
-
-                    with urllib.request.urlopen(req_send) as resp_send:
-                        print(
-                            ">>> TIKRAS PALEIDIMAS: MailerLite kampanija"
-                            " sėkmingai perkelta į OUTBOX (pradėta siųsti)!"
-                        )
-                else:
+                with urllib.request.urlopen(req_send, timeout=30):
                     print(
-                        ">>> BANDOMASIS PALEIDIMAS: Laiškas paliktas kaip"
-                        " Juodraštis (Draft)."
+                        ">>> MailerLite kampanija sėkmingai perkelta į OUTBOX"
+                        " (pradėta siųsti prenumeratoriams)!"
                     )
+            else:
+                print(
+                    ">>> MailerLite laiškas išsaugotas kaip Juodraštis (Draft)."
+                )
 
     except urllib.error.HTTPError as e:
         error_msg = e.read().decode("utf-8")
-        print(
-            f">>> KLAIDA kuriant MailerLite juodraštį. Kodas: {e.code},"
-            f" Priežastis: {error_msg}"
+        kritine_klaida(
+            f"Klaida MailerLite API (kodas {e.code}): {error_msg}"
         )
+    except SystemExit:
+        raise
     except Exception as e:
-        print(f">>> KLAIDA: {e}")
+        kritine_klaida(f"Klaida vykdant MailerLite veiksmus: {e}")
 else:
-    print(
-        ">>> MAILERLITE_API_KEY nerastas aplinkoje. Juodraštis nekuriamas."
+    print(">>> MailerLite naujienlaiškio siuntimas išjungtas ('nesiusti').")
+
+# =========================================================================
+# 4 ŽINGSNIS: LEIDINIO NUMERIO IŠSAUGOJIMAS ATMINTYJE
+# =========================================================================
+if paleidimo_rezimas == "tikras":
+    atnaujinti_skaitikli = (current_year > saved_year) or (
+        current_year == saved_year and numeris >= saved_num
     )
-
-# =========================================================================
-# 3. WORDPRESS PUBLIKAVIMAS SU PILNAIS ACF LAUKAIS IR ŽYMA
-# =========================================================================
-wp_user = os.environ.get("WP_USERNAME")
-wp_pass = os.environ.get("WP_APP_PASSWORD")
-wp_category = int(os.environ.get("WP_CATEGORY_ID_RELIGIJA", 65204))
-wp_acf_author_id = 8149
-
-ZYMOS_PAVADINIMAS = "Bernardinai.lt religijos naujienų ir tikėjimo savaitraštis"
-
-
-def gauti_arba_sukurti_zyma(tag_name, headers):
-    """Suranda esamą žymos ID pagal pavadinimą arba sukuria naują."""
-    encoded_name = urllib.parse.quote(tag_name)
-    url = f"https://www.bernardinai.lt/wp-json/wp/v2/tags?search={encoded_name}&per_page=50"
-    try:
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req) as resp:
-            tags = json.loads(resp.read().decode("utf-8"))
-            for t in tags:
-                if t.get("name", "").strip().lower() == tag_name.strip().lower():
-                    print(f">>> Rasta žyma '{tag_name}' (ID: {t['id']})")
-                    return t["id"]
-    except Exception as e:
-        print(f">>> Įspėjimas ieškant žymos '{tag_name}': {e}")
-
-    try:
-        create_url = "https://www.bernardinai.lt/wp-json/wp/v2/tags"
-        payload = json.dumps({"name": tag_name}).encode("utf-8")
-        h = headers.copy()
-        h["Content-Type"] = "application/json; charset=utf-8"
-        req = urllib.request.Request(create_url, data=payload, headers=h, method="POST")
-        with urllib.request.urlopen(req) as resp:
-            new_tag = json.loads(resp.read().decode("utf-8"))
-            print(f">>> Sukurta nauja žyma '{tag_name}' (ID: {new_tag['id']})")
-            return new_tag["id"]
-    except urllib.error.HTTPError as e:
-        err_body = e.read().decode("utf-8")
+    if atnaujinti_skaitikli:
         try:
-            err_json = json.loads(err_body)
-            if err_json.get("code") == "term_exists":
-                term_id = err_json.get("data", {}).get("term_id")
-                if term_id:
-                    print(f">>> Žyma '{tag_name}' jau egzistuoja (ID: {term_id})")
-                    return int(term_id)
-        except Exception:
-            pass
-        print(f">>> Nepavyko sukurti žymos '{tag_name}': {err_body}")
-    except Exception as e:
-        print(f">>> Nepavyko sukurti žymos '{tag_name}': {e}")
-    return None
-
-
-if wp_user and wp_pass:
-    print("Kuriamas informacinis įrašas Bernardinai.lt svetainėje...")
-
-    wp_user_clean = wp_user.strip()
-    wp_pass_clean = wp_pass.replace(" ", "").strip()
-
-    print(f"Prisijungiama prie WordPress su vartotoju: '{wp_user_clean}'")
-
-    auth_str = f"{wp_user_clean}:{wp_pass_clean}"
-    encoded_auth = base64.b64encode(auth_str.encode("utf-8")).decode("utf-8")
-    basic_val = f"Basic {encoded_auth}"
-
-    wp_headers = {
-        "Authorization": basic_val,
-        "X-HTTP-Authorization": basic_val,
-        "REDIRECT_HTTP_AUTHORIZATION": basic_val,
-        "User-Agent": INTERNAL_USER_AGENT,
-        "Referer": "https://www.bernardinai.lt/",
-        "X-Bnd-Automate": cf_key,
-    }
-
-    # 1. Gauname žymos ID
-    tag_id = gauti_arba_sukurti_zyma(ZYMOS_PAVADINIMAS, wp_headers)
-
-    # 2. Parsiunčiame ir įkeliame titulinę nuotrauką (su atsarginiu proxy)
-    featured_media_id = None
-    if cover_bg_image and cover_bg_image.startswith("http"):
-        try:
-            svara_img_url = isvalyti_img_url(cover_bg_image)
-            print(f"Atsisiunčiama viršelio nuotrauka iš: {svara_img_url}")
-
-            image_data, mime_type, final_img_u = atsisiusti_paveiksleli_su_atsarga(svara_img_url)
-
-            ext = ".jpg"
-            if "webp" in mime_type:
-                ext = ".webp"
-            elif "png" in mime_type:
-                ext = ".png"
-
-            failo_varda = f"religijos_savaitrastis_cover_{today_str}{ext}"
-            media_headers = wp_headers.copy()
-            media_headers["Content-Type"] = mime_type
-            media_headers["Content-Disposition"] = (
-                f'attachment; filename="{failo_varda}"'
-            )
-
-            req_media = urllib.request.Request(
-                "https://www.bernardinai.lt/wp-json/wp/v2/media",
-                data=image_data,
-                headers=media_headers,
-                method="POST",
-            )
-            with urllib.request.urlopen(req_media) as resp_media:
-                media_json = json.loads(resp_media.read().decode("utf-8"))
-                featured_media_id = media_json.get("id")
-                print(
-                    f">>> Titulinė nuotrauka sėkmingai įkelta! ID:"
-                    f" {featured_media_id}"
-                )
-        except urllib.error.HTTPError as e:
+            with open(tracker_file, "w", encoding="utf-8") as f:
+                f.write(f"{current_year}/{numeris}/{today_str}")
             print(
-                ">>> KLAIDA įkeliant nuotrauką į Media biblioteką (kodas"
-                f" {e.code}): {e.read().decode('utf-8')}"
+                f">>> Leidinio numeris atnaujintas ir išsaugotas:"
+                f" {current_year}/{numeris}/{today_str}"
             )
         except Exception as e:
-            print(
-                ">>> NEPAVYKO įkelti titulinės nuotraukos (tęsiame be jos):"
-                f" {e}"
-            )
-
-    trumpa_istrauka = (
-        "Bernardinai.lt religijos naujienų ir tikėjimo savaitraštis Nr."
-        f" {leidinio_numeris}. {leidinio_data} paruoštas svarbiausių tekstų"
-        " PDF rinkinys."
-    )[:140]
-
-    irasas_pavadinimas = (
-        "Religijos naujienų ir tikėjimo savaitraštis Nr."
-        f" {leidinio_numeris} | {leidinio_data}"
-    )
-
-    wp_html_turinys = f"""<p>Skaitytojams pateikiame interneto dienraščio „Bernardinai.lt“ Religijos naujienų ir tikėjimo savaitraščio numerį ({leidinio_data}, Nr. {leidinio_numeris}). Šiame leidinyje rasite redaktorių atrinktus svarbiausius savaitės religijos, dvasingumo bei tikėjimo tekstus ir pokalbius, paruoštus patogiam skaitymui žurnalo formatu.</p>
-<p style="margin: 30px 0; text-align: center;">
-    <a href="{pdf_url}" target="_blank" rel="noopener noreferrer" style="background-color: {THEME_COLOR}; color: #ffffff; padding: 14px 28px; text-decoration: none; font-weight: bold; border-radius: 5px; display: inline-block; font-size: 16px;">
-        Atsisiųsti PDF savaitraštį
-    </a>
-</p>
-<p><em>Autorius: Bernardinai.lt</em></p>"""
-
-    payload_wp = {
-        "title": irasas_pavadinimas,
-        "content": wp_html_turinys,
-        "excerpt": trumpa_istrauka,
-        "status": "publish" if is_real_run else "draft",
-        "categories": [wp_category],
-        "acf": {
-            "short_description": trumpa_istrauka,
-            "author": [wp_acf_author_id],
-            "show_on_homepage": "yes",
-            "post_featured_image": "1",
-        },
-    }
-
-    if tag_id:
-        payload_wp["tags"] = [int(tag_id)]
-
-    if featured_media_id:
-        payload_wp["featured_media"] = int(featured_media_id)
-
-    post_headers = wp_headers.copy()
-    post_headers["Content-Type"] = "application/json; charset=utf-8"
-
-    req_wp = urllib.request.Request(
-        "https://www.bernardinai.lt/wp-json/wp/v2/posts",
-        data=json.dumps(payload_wp).encode("utf-8"),
-        headers=post_headers,
-        method="POST",
-    )
-
-    try:
-        with urllib.request.urlopen(req_wp) as resp_wp:
-            wp_data = json.loads(resp_wp.read().decode("utf-8"))
-            post_link = wp_data.get("link", "Nuoroda nerasta")
-            print(f">>> Sėkmingai sukurtas įrašas svetainėje! URL: {post_link}")
-    except urllib.error.HTTPError as e:
-        err_msg = e.read().decode("utf-8")
+            print(f"Nepavyko išsaugoti numerio failo: {e}")
+    else:
         print(
-            f">>> KLAIDA kuriant įrašą WordPress (kodas {e.code}):\n{err_msg}"
+            f">>> Išleistas ankstesnis numeris ({current_year}/{numeris}),"
+            f" todėl pagrindinis skaitiklis ({saved_year}/{saved_num})"
+            " nekeičiamas."
         )
-    except Exception as e:
-        print(f">>> KLAIDA kuriant WordPress įrašą: {e}")
-else:
+elif paleidimo_rezimas == "tik_atnaujinti_pdf":
     print(
-        ">>> WP_USERNAME arba WP_APP_PASSWORD nerasti aplinkoje. Įrašas"
-        " svetainėje nekuriamas."
+        ">>> REŽIMAS 'tik_atnaujinti_pdf': PDF failas FTP serveryje"
+        " atnaujintas, numerio skaitiklis nekeičiamas."
+    )
+else:
+    if not os.path.exists(tracker_file):
+        try:
+            with open(tracker_file, "w", encoding="utf-8") as f:
+                f.write(f"{current_year}/0/2000-01-01")
+        except Exception:
+            pass
+    print(
+        ">>> BANDOMASIS PALEIDIMAS: Naudotas bandomasis režimas, skaitiklis"
+        " neatnaujinamas."
     )
