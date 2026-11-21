@@ -532,7 +532,7 @@ def ar_tikri_paveikslelio_baitai(data):
     return False
 
 
-nuotrauku_ podelis = {}
+nuotrauku_podelis = {}
 
 
 def parsiusti_ir_patikrinti_nuotrauka(raw_url, kontekstas=""):
@@ -1084,7 +1084,7 @@ for str_item in visi_straipsniai:
             kontekstas=f"Vidinė iliustracija straipsnyje: {str_item['title']}",
         )
         # Pašaliname srcset ir sizes, kad WeasyPrint nesiųstų jų per tinklą
-        švari_zyma = re.sub(
+        svari_zyma = re.sub(
             r'\s+(?:srcset|sizes|loading|decoding)=["\'][^"\']*["\']',
             "",
             pilna_zyma,
