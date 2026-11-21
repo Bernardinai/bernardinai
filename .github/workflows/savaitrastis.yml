@@ -5,11 +5,45 @@ on:
     types: [paleisti_savaitrasti] # Klausosi išorinio cron-job.org žadintuvo
   workflow_dispatch:
     inputs:
-      tikras_leidinys:
-        description: 'Pazymeti, jei norite isleisti TIKRA numeri'
+      paleidimo_rezimas:
+        description: '1. Paleidimo režimas'
         required: true
-        type: boolean
-        default: false
+        type: choice
+        default: 'bandomasis'
+        options:
+          - bandomasis
+          - tikras
+          - tik_atnaujinti_pdf
+      leidinio_numeris:
+        description: '2. Leidinio numeris (tuščia = automatiškai, arba įrašykite pvz.: 47 arba 2026/47)'
+        required: false
+        type: string
+        default: ''
+      leidinio_data:
+        description: '3. Leidinio data YYYY-MM-DD (tuščia = šiandien, arba pvz.: 2026-11-21)'
+        required: false
+        type: string
+        default: ''
+      siusti_naujienlaiski:
+        description: '4. MailerLite naujienlaiškis (auto = pagal režimą)'
+        required: true
+        type: choice
+        default: 'auto'
+        options:
+          - auto
+          - siusti
+          - juodrastis
+          - nesiusti
+      publikuoti_wp:
+        description: '5. WordPress įrašas svetainėje (auto = pagal režimą)'
+        required: true
+        type: choice
+        default: 'auto'
+        options:
+          - auto
+          - publish
+          - draft
+          - ne
 
 permissions:
   contents: write
@@ -36,14 +70,18 @@ jobs:
       - name: 4. Diegiamos Python bibliotekos
         run: |
           python -m pip install --upgrade pip
-          pip install feedparser weasyprint tzdata
+          pip install feedparser weasyprint tzdata Pillow
 
       - name: 5. Generuojamas savaitrastis
         env:
           MAILERLITE_API_KEY: ${{ secrets.MAILERLITE_API_KEY }}
-          # Jei paleidžia cron-job.org (repository_dispatch), perduodame 'schedule' ir 'true', kad išleistų tikrą numerį:
+          # Kai pažadina cron-job.org (repository_dispatch), automatiškai leidžia įprastą tikrą numerį:
           EVENT_NAME: ${{ github.event_name == 'repository_dispatch' && 'schedule' || github.event_name }}
-          TIKRAS_LEIDINYS: ${{ github.event_name == 'repository_dispatch' && 'true' || github.event.inputs.tikras_leidinys }}
+          PALEIDIMO_REZIMAS: ${{ github.event_name == 'repository_dispatch' && 'tikras' || inputs.paleidimo_rezimas }}
+          LEIDINIO_NUMERIS_CUSTOM: ${{ inputs.leidinio_numeris }}
+          LEIDINIO_DATA_CUSTOM: ${{ inputs.leidinio_data }}
+          SIUSTI_NAUJIENLAISKI: ${{ github.event_name == 'repository_dispatch' && 'auto' || inputs.siusti_naujienlaiski }}
+          PUBLIKUOTI_WP: ${{ github.event_name == 'repository_dispatch' && 'auto' || inputs.publikuoti_wp }}
           WP_USERNAME: ${{ secrets.WP_USERNAME }}
           WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
           WP_CATEGORY_ID: ${{ secrets.WP_CATEGORY_ID }}
@@ -59,7 +97,7 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add archyvas/ leidinio_numeris.txt
           if ! git diff --staged --quiet; then
-            git commit -m "Automatinis PDF archyvo papildymas"
+            git commit -m "Automatinis PDF archyvo papildymas (${{ inputs.paleidimo_rezimas || 'schedule' }})"
             for i in 1 2 3; do
               git pull --rebase origin main && git push && break || sleep 5
             done
