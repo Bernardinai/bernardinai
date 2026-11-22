@@ -39,6 +39,8 @@ jobs:
           MAILERLITE_API_KEY: ${{ secrets.MAILERLITE_API_KEY }}
           MAILERLITE_GROUP_ID_KASDIENIS: "103032162"
           CF_AUTOMATION_KEY: ${{ secrets.CF_AUTOMATION_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: python naujienlaiskis_kasdienis.py
 
       - name: Išsaugoti sugeneruotą HTML peržiūrai
