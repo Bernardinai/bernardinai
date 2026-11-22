@@ -149,7 +149,13 @@ def ar_siandien_jau_issiusta(ml_key):
                         )
                         subj = str(c.get("subject") or mail_subj or c.get("name") or "")
                         created = str(c.get("date_created") or c.get("date_send") or "")
-                        if "Dienos temos:" in subj and "[BANDOMASIS]" not in subj and today_str in created:
+                        c_name = str(c.get("name") or "")
+                        is_daily = (
+                            "Bernardinai.lt šiandien:" in subj
+                            or "Dienos temos:" in subj
+                            or f"Kasdienis naujienlaiškis ({today_str})" in c_name
+                        )
+                        if is_daily and "[BANDOMASIS]" not in subj and "[BANDOMASIS]" not in c_name and today_str in created:
                             return True
         except Exception:
             pass
@@ -378,6 +384,180 @@ print(
     f" partnerių vitrina: {partner_showcase.get('id') if isinstance(partner_showcase, dict) else 'NE'}."
 )
 
+
+def isskirti_temos_akcenta(antraste, max_ilgis=38):
+    """Iš ilgos straipsnio antraštės išskiria trumpą, neapkarpytą ir be dvitaškių skambančią temą."""
+    t = re.sub(r"\s+", " ", str(antraste or "")).strip()
+    if not t:
+        return ""
+    t = re.sub(r'^[„"«\-–—\s]+|[“"»\s]+$', "", t).strip()
+
+    if ":" in t:
+        kaire, desine = [d.strip() for d in t.split(":", 1)]
+        kaire_be_kab = re.sub(r'[„“"\']', "", kaire).strip()
+        desine_be_kab = re.sub(r'^[„"«\s]+|[“"»\s]+$', "", desine).strip()
+        # Jei kairėje ne autoriaus inicialai ir ji glausta – imame kairę, kitu atveju – dešinę
+        has_initials = bool(re.search(r"\b[A-ZĄČĘĖĮŠŲŪŽ]\.\s*[A-ZĄČĘĖĮŠŲŪŽ]", kaire))
+        is_role_prefix = any(
+            kaire_be_kab.lower().startswith(p)
+            for p in ("mokslinink", "politolog", "žurnalist", "vyskup", "kun.", "kunig", "istorik", "ekonomist", "psicholog", "sinoptik", "ekspert")
+        )
+        if not has_initials and not is_role_prefix and 10 <= len(kaire_be_kab) <= max_ilgis and len(kaire_be_kab.split()) >= 2:
+            kandidatas = kaire_be_kab
+        else:
+            kandidatas = desine_be_kab
+    else:
+        kandidatas = t
+
+    if len(kandidatas) > max_ilgis and " – " in kandidatas:
+        pries_bruksni = kandidatas.split(" – ", 1)[0].strip()
+        if len(pries_bruksni) >= 12:
+            kandidatas = pries_bruksni
+
+    kandidatas = re.sub(r'^[„"«\s]+|[“"».,;:!?\-–—\s]+$', "", kandidatas).strip()
+
+    if len(kandidatas) > max_ilgis:
+        if "," in kandidatas:
+            pries_kabl = kandidatas.split(",", 1)[0].strip()
+            if 12 <= len(pries_kabl) <= max_ilgis and not pries_kabl.lower().startswith(("jei", "jeigu", "kai", "kad", "jog", "nes", "nors")):
+                kandidatas = pries_kabl
+        if len(kandidatas) > max_ilgis + 6:
+            return ""
+
+    if kandidatas:
+        pirmas_zodis = kandidatas.split()[0]
+        if len(pirmas_zodis) > 1 and not pirmas_zodis.isupper() and "." not in pirmas_zodis:
+            tikriniai_pradzioje = (
+                "Lietuv", "Vilni", "Kaun", "Klaipėd", "Panevėž", "Šiauli", "Vatikan", "Popiež", "Krist",
+                "Diev", "Bažnyč", "Ukrain", "Lenkij", "Europ", "JAV", "Izrael", "Advent", "Kalėd", "Gavėn", "Velyk"
+            )
+            if not any(kandidatas.startswith(tp) for tp in tikriniai_pradzioje):
+                kandidatas = kandidatas[0].lower() + kandidatas[1:]
+    return kandidatas
+
+
+def sugeneruoti_laisko_tema_su_di(visi_straipsniai):
+    """Jei saugykloje yra GEMINI_API_KEY arba OPENAI_API_KEY, suformuluoja gyvą, trumpą redaktorinę temą be daugtaškių."""
+    antrastes = [s.get("title", "").strip() for s in visi_straipsniai if s.get("title")][:6]
+    if not antrastes:
+        return ""
+
+    prompt = (
+        "Esi dienraščio „Bernardinai.lt“ vyr. redaktorius. Pagal šias šiandienos vakaro naujienlaiškio antraštes "
+        "parašyk VIENĄ el. laiško temą (Subject).\n"
+        "Griežtos taisyklės:\n"
+        "1. Privalo prasidėti tiksliai žodžiais: Bernardinai.lt šiandien: \n"
+        "2. Po dvitaškio trumpai, gyvai ir sklandžiai išvardyk 2 arba 3 įdomiausias temas per kablelį ir jungtuką „ir“.\n"
+        "3. Bendra visa eilutė privalo būti nuo 50 iki 82 simbolių ilgio.\n"
+        "4. JOKIŲ daugtaškių (...), jokių nukirstų žodžių, jokių antrų dvitaškių ir jokių kabučių aplink visą sakinį.\n"
+        "5. Grąžink tik pačią temos eilutę.\n\n"
+        "Šiandienos straipsniai:\n- " + "\n- ".join(antrastes)
+    )
+
+    gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if gemini_key:
+        for model_name in ("gemini-2.5-flash", "gemini-2.0-flash"):
+            try:
+                g_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={gemini_key}"
+                g_body = {
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {"temperature": 0.35, "maxOutputTokens": 120},
+                }
+                req = urllib.request.Request(
+                    g_url,
+                    data=json.dumps(g_body).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=15) as r:
+                    resp_json = json.loads(r.read().decode("utf-8"))
+                    cand_txt = (
+                        resp_json.get("candidates", [{}])[0]
+                        .get("content", {})
+                        .get("parts", [{}])[0]
+                        .get("text", "")
+                        .strip()
+                    )
+                    cand_txt = cand_txt.splitlines()[0].strip().strip('"„“').rstrip(".")
+                    if cand_txt.startswith("Bernardinai.lt šiandien:") and "..." not in cand_txt and "…" not in cand_txt and 38 <= len(cand_txt) <= 95:
+                        return cand_txt
+            except Exception:
+                pass
+
+    openai_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    if openai_key:
+        try:
+            o_body = {
+                "model": "gpt-4o-mini",
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.35,
+                "max_tokens": 90,
+            }
+            req = urllib.request.Request(
+                "https://api.openai.com/v1/chat/completions",
+                data=json.dumps(o_body).encode("utf-8"),
+                headers={
+                    "Authorization": f"Bearer {openai_key}",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=15) as r:
+                resp_json = json.loads(r.read().decode("utf-8"))
+                cand_txt = (
+                    resp_json.get("choices", [{}])[0]
+                    .get("message", {})
+                    .get("content", "")
+                    .strip()
+                )
+                cand_txt = cand_txt.splitlines()[0].strip().strip('"„“').rstrip(".")
+                if cand_txt.startswith("Bernardinai.lt šiandien:") and "..." not in cand_txt and "…" not in cand_txt and 38 <= len(cand_txt) <= 95:
+                    return cand_txt
+        except Exception:
+            pass
+
+    return ""
+
+
+def suformuoti_laisko_tema(main_list, ed_list, cat_list, data_trumpa):
+    """Garantuoja tvarkingą, nenukirstą ir atpažįstamą temą: 'Bernardinai.lt šiandien: ...'"""
+    visi = list(main_list) + list(ed_list)
+    for c in cat_list:
+        visi.extend(c.get("items") or [])
+
+    di_tema = sugeneruoti_laisko_tema_su_di(visi)
+    if di_tema:
+        return di_tema
+
+    pradzia = "Bernardinai.lt šiandien: "
+    akcentai = []
+    for st in visi:
+        akc = isskirti_temos_akcenta(st.get("title", ""), max_ilgis=38)
+        if akc and akc.lower() not in [a.lower() for a in akcentai]:
+            akcentai.append(akc)
+        if len(akcentai) >= 3:
+            break
+
+    if len(akcentai) >= 3:
+        trys = f"{pradzia}{akcentai[0]}, {akcentai[1]} ir {akcentai[2]}"
+        if len(trys) <= 98:
+            return trys
+    if len(akcentai) >= 2:
+        du = f"{pradzia}{akcentai[0]} ir {akcentai[1]}"
+        if len(du) <= 98:
+            return du
+    if len(akcentai) >= 1:
+        rubriku_vardai = [c.get("title", "").lower() for c in cat_list if c.get("title")]
+        priedas = "komentarai ir kultūra" if not rubriku_vardai else f"įžvalgos ir {rubriku_vardai[0]}"
+        vienas_su_priedu = f"{pradzia}{akcentai[0]}, {priedas}"
+        if len(vienas_su_priedu) <= 98:
+            return vienas_su_priedu
+        if len(f"{pradzia}{akcentai[0]}") <= 88:
+            return f"{pradzia}{akcentai[0]}"
+
+    return f"Bernardinai.lt šiandien: svarbiausios {data_trumpa} temos, komentarai ir kultūra"
+
+
 # =========================================================================
 # EL. LAIŠKO HTML FORMAVIMAS (600px, PRITAIKYTA MOBILIESIEMS IR OUTLOOK)
 # =========================================================================
@@ -404,7 +584,7 @@ html_parts.append(f"""<!DOCTYPE html>
 </head>
 <body style="margin:0; padding:0; background-color:{BG_PAGE}; font-family: Arial, Helvetica, sans-serif; color:{TEXT_MAIN}; -webkit-font-smoothing:antialiased;">
 <div style="display:none; max-height:0; overflow:hidden; opacity:0;">
-  {esc(hero.get('title'))} – svarbiausios „Bernardinai.lt“ dienos temos, komentarai ir rekomendacijos.
+  {esc(" • ".join([p.get("title", "") for p in (main_posts[:3] + editorials[:1]) if p.get("title")]))}
 </div>
 
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:{BG_PAGE}; padding: 20px 0;">
@@ -785,11 +965,14 @@ print(f">>> Sugeneruotas HTML failas: {local_preview_path}")
 # =========================================================================
 if nl_rezimas in ("siusti", "juodrastis"):
     subject_prefix = "[BANDOMASIS] " if nl_rezimas == "juodrastis" else ""
-    subject_line = f"{subject_prefix}Dienos temos: {hero.get('title', data_trumpiems)}"
-    if len(subject_line) > 95:
-        subject_line = subject_line[:92].rsplit(" ", 1)[0] + "…"
+    bazine_tema = suformuoti_laisko_tema(main_posts, editorials, categories, f"{menesiai[now_lt.month - 1]} {now_lt.day} d.")
+    subject_line = f"{subject_prefix}{bazine_tema}"
+    campaign_internal_name = f"{subject_prefix}Kasdienis naujienlaiškis ({today_str})"
+    print(f">>> Suformuota laiško tema: {subject_line}")
+    print(f">>> Vidinis MailerLite pavadinimas: {campaign_internal_name}")
 
     payload_campaign = {
+        "name": campaign_internal_name,
         "type": "regular",
         "groups": [group_id],
         "subject": subject_line,
