@@ -1,9 +1,9 @@
 name: Bernardinai.lt Kasdienis Naujienlaiskis (18:00)
 
 on:
+  repository_dispatch:
+    types: [paleisti_kasdieni_naujienlaiski]
   schedule:
-    # Paleidžiama 15:00 ir 16:00 UTC, o pats Python skriptas patikrina Lietuvos laiką,
-    # kad išsiųstų lygiai vieną kartą – 18:00 val. tiek vasarą, tiek žiemą.
     - cron: '5 15 * * *'
     - cron: '5 16 * * *'
   workflow_dispatch:
