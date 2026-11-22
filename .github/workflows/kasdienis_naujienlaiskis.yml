@@ -1,0 +1,50 @@
+name: Bernardinai.lt Kasdienis Naujienlaiskis (18:00)
+
+on:
+  schedule:
+    # Paleidžiama 15:00 ir 16:00 UTC, o pats Python skriptas patikrina Lietuvos laiką,
+    # kad išsiųstų lygiai vieną kartą – 18:00 val. tiek vasarą, tiek žiemą.
+    - cron: '5 15 * * *'
+    - cron: '5 16 * * *'
+  workflow_dispatch:
+    inputs:
+      naujienlaiskis:
+        description: 'Veiksmas MailerLite sistemoje'
+        required: true
+        default: 'juodrastis'
+        type: choice
+        options:
+          - juodrastis
+          - siusti
+          - nesiusti
+
+jobs:
+  send-daily-newsletter:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Parsiųsti saugyklos failus
+        uses: actions/checkout@v4
+
+      - name: Paruošti Python aplinką
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Generuoti ir paruošti kasdienį naujienlaiškį
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          # Pakeiskite į "taip" tik tada, kai apžiūrėsite bandomąjį juodraštį ir išjungsite senąjį MailerLite RSS:
+          AKTYVUOTI_KASDIENI_SIUNTIMA: "ne"
+          SIUSTI_NAUJIENLAISKI: ${{ inputs.naujienlaiskis }}
+          MAILERLITE_API_KEY: ${{ secrets.MAILERLITE_API_KEY }}
+          MAILERLITE_GROUP_ID_KASDIENIS: "103032162"
+          CF_AUTOMATION_KEY: ${{ secrets.CF_AUTOMATION_KEY }}
+        run: python naujienlaiskis_kasdienis.py
+
+      - name: Išsaugoti sugeneruotą HTML peržiūrai
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kasdienis-naujienlaiskis-html
+          path: archyvas/kasdienis_naujienlaiskis_*.html
+          if-no-files-found: ignore
