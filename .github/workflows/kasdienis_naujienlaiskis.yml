@@ -34,7 +34,7 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           # Pakeiskite į "taip" tik tada, kai apžiūrėsite bandomąjį juodraštį ir išjungsite senąjį MailerLite RSS:
-          AKTYVUOTI_KASDIENI_SIUNTIMA: "ne"
+          AKTYVUOTI_KASDIENI_SIUNTIMA: "taip"
           SIUSTI_NAUJIENLAISKI: ${{ inputs.naujienlaiskis }}
           MAILERLITE_API_KEY: ${{ secrets.MAILERLITE_API_KEY }}
           MAILERLITE_GROUP_ID_KASDIENIS: "103032162"
