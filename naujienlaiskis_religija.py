@@ -1499,7 +1499,7 @@ pdf_url = (
 # 2 ŽINGSNIS: WORDPRESS PUBLIKAVIMAS ARBA ATNAUJINIMAS (PRIEŠ NAUJIENLAIŠKĮ!)
 # =========================================================================
 wp_religija_cat_id = 16  # Pagrindinė Religijos rubrika
-wp_savaitrastis_cat_id = int(os.environ.get("WP_CATEGORY_ID_RELIGIJA", 65204))
+wp_savaitrastis_cat_id = int(os.environ.get("WP_CATEGORY_ID_RELIGIJA", "").strip() or 65204)
 wp_acf_author_id = 8149
 
 
@@ -1821,7 +1821,7 @@ if nl_rezimas in ("siusti", "juodrastis"):
 """
 
     religija_group_id = int(
-        os.environ.get("MAILERLITE_GROUP_ID_RELIGIJA", 103032162)
+        os.environ.get("MAILERLITE_GROUP_ID_RELIGIJA", "").strip() or 103032162
     )
     payload_campaign = {
         "type": "regular",
