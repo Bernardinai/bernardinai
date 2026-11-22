@@ -53,15 +53,15 @@ auto_18val_enabled = (
 
 now_lt = datetime.datetime.now(LT_TZ)
 
-# Jei paleista pagal tvarkaraštį (cron), siunčiame tik 18 val. Lietuvos laiku
-if event_name == "schedule":
+# Jei paleista pagal tvarkaraštį arba išorinį laikmatį (repository_dispatch), tikriname įjungimo vėliavėlę
+if event_name in ("schedule", "repository_dispatch"):
     if not auto_18val_enabled:
         print(
             ">>> Kasdienis automatinis siuntimas dar neįjungtas"
             " (AKTYVUOTI_KASDIENI_SIUNTIMA='ne'). Procesas sustabdytas."
         )
         sys.exit(0)
-    if now_lt.hour != 18:
+    if event_name == "schedule" and now_lt.hour != 18:
         print(
             f">>> Dabar Lietuvoje {now_lt.strftime('%H:%M')} val. Laukiama"
             " tikslaus 18:00 val. lango."
@@ -73,7 +73,11 @@ raw_nl = (
 ).strip().lower()
 
 if not raw_nl or raw_nl == "auto":
-    nl_rezimas = "siusti" if event_name == "schedule" else "juodrastis"
+    nl_rezimas = (
+        "siusti"
+        if event_name in ("schedule", "repository_dispatch")
+        else "juodrastis"
+    )
 elif raw_nl in ("siusti", "send", "true", "taip", "1"):
     nl_rezimas = "siusti"
 elif raw_nl in ("juodrastis", "draft"):
@@ -136,20 +140,25 @@ def ar_siandien_jau_issiusta(ml_key):
                 if isinstance(arr, list):
                     for c in arr:
                         mails = c.get("mails")
-                        mail_subj = mails[0].get("subject", "") if isinstance(mails, list) and mails and isinstance(mails[0], dict) else ""
+                        mail_subj = (
+                            mails[0].get("subject", "")
+                            if isinstance(mails, list)
+                            and mails
+                            and isinstance(mails[0], dict)
+                            else ""
+                        )
                         subj = str(c.get("subject") or mail_subj or c.get("name") or "")
                         created = str(c.get("date_created") or c.get("date_send") or "")
-                        if "Dienos temos:" in subj and today_str in created:
+                        if "Dienos temos:" in subj and "[BANDOMASIS]" not in subj and today_str in created:
                             return True
         except Exception:
             pass
     return False
 
 
-if event_name == "schedule" and nl_rezimas == "siusti":
-    if ar_siandien_jau_issiusta(api_key):
-        print(">>> Šiandienos vakarinis naujienlaiškis jau išsiųstas! Stabdome.")
-        sys.exit(0)
+if nl_rezimas == "siusti" and ar_siandien_jau_issiusta(api_key):
+    print(">>> Šiandienos vakarinis naujienlaiškis jau išsiųstas! Stabdome.")
+    sys.exit(0)
 
 
 def uzkoduoti_url(url):
@@ -168,15 +177,16 @@ def uzkoduoti_url(url):
     )
 
 
-def email_img(raw_url, width=600, height=0):
-    """Konvertuoja .webp į .jpg, kad nuotraukas rodytų visos el. pašto programos (įskaitant Outlook)."""
+def email_img(raw_url, width=600, height=0, crop=True):
+    """Konvertuoja paveikslėlius į JPG, kad juos rodytų visos el. pašto programos (įskaitant Outlook)."""
     clean = uzkoduoti_url(raw_url)
     if not clean:
         clean = "https://www.bernardinai.lt/wp-content/uploads/Bernardinai500x500-jpg-webp.webp"
     be_schemos = re.sub(r"^https?://", "", clean, flags=re.I)
     params = f"url={urllib.parse.quote(be_schemos, safe='')}&output=jpg&w={width}&q=85"
     if height > 0:
-        params += f"&h={height}&fit=cover"
+        fit_mode = "cover" if crop else "contain&bg=white"
+        params += f"&h={height}&fit={fit_mode}"
     return f"https://images.weserv.nl/?{params}"
 
 
@@ -188,6 +198,9 @@ def su_utm(url, saltinis_blokas):
     clean = uzkoduoti_url(url)
     if not clean:
         return "https://www.bernardinai.lt/"
+    # Jei tai jau vidinė sekimo nuoroda (?brn_ad_click arba ?brn_shop_go), jos nekeičiame
+    if "brn_ad_click=" in clean or "brn_shop_go=" in clean:
+        return clean
     sep = "&" if "?" in clean else "?"
     return (
         f"{clean}{sep}utm_source=mailerlite&utm_medium=email"
@@ -209,12 +222,12 @@ def gauti_duomenis_is_wp_api():
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-            if isinstance(data, dict) and data.get("main_posts"):
+            if isinstance(data, dict) and "main_posts" in data:
                 print(">>> Duomenys sėkmingai gauti iš /wp-json/custom/v1/daily-newsletter!")
                 return data
     except urllib.error.HTTPError as e:
         print(
-            f">>> Pastaba: specialus WP įskiepio adresas dar neaktyvus (HTTP {e.code})."
+            f">>> Pastaba: specialus WP įskiepio adresas neatsakė (HTTP {e.code})."
             " Naudojamas atsarginis standartinis WP REST API."
         )
     except Exception as e:
@@ -223,6 +236,35 @@ def gauti_duomenis_is_wp_api():
             " Naudojamas atsarginis standartinis WP REST API."
         )
     return None
+
+
+def pazymeti_issiustus_straipsnius_wp(post_ids, quote_hash=""):
+    """Tik po tikro išsiuntimo pažymi straipsnių ID ir citatą WordPress duomenų bazėje, kad kitą dieną nesikartotų."""
+    if not post_ids and not quote_hash:
+        return
+    endpoint = "https://www.bernardinai.lt/wp-json/custom/v1/daily-newsletter/mark-sent"
+    payload = json.dumps({"post_ids": post_ids, "quote_hash": quote_hash}).encode("utf-8")
+    req = urllib.request.Request(
+        endpoint,
+        data=payload,
+        headers={
+            "User-Agent": INTERNAL_USER_AGENT,
+            "X-Bnd-Automate": CF_SECRET_KEY,
+            "Referer": "https://www.bernardinai.lt/",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            res = json.loads(r.read().decode("utf-8"))
+            print(
+                f">>> Panaudoti straipsniai įsiminti WordPress bazėje"
+                f" (naujų: {res.get('saved_count', 0)}, viso saugoma: {res.get('total_kept', 0)})."
+            )
+    except Exception as e:
+        print(f">>> Pastaba: nepavyko įrašyti išsiųstų ID į WP atmintį ({e}).")
 
 
 def isvalyti_html_teksta(raw_html, max_len=200):
@@ -241,9 +283,10 @@ def gauti_atsarginius_duomenis_standartiniu_api():
         "Accept": "application/json",
     }
     used_ids = set()
+    after_iso = (now_lt - datetime.timedelta(hours=36)).strftime("%Y-%m-%dT%H:%M:%S")
 
     def fetch_posts(params_str, limit=5):
-        u = f"https://www.bernardinai.lt/wp-json/wp/v2/posts?{params_str}&_embed=1"
+        u = f"https://www.bernardinai.lt/wp-json/wp/v2/posts?{params_str}&after={after_iso}&_embed=1"
         req = urllib.request.Request(u, headers=headers)
         items = []
         with urllib.request.urlopen(req, timeout=25) as r:
@@ -303,7 +346,9 @@ def gauti_atsarginius_duomenis_standartiniu_api():
         "most_read": [],
         "categories": categories,
         "posters": [],
-        "native_ads": [],
+        "direct_ad": None,
+        "partner_showcase": None,
+        "issue_post_ids": list(used_ids),
     }
 
 
@@ -312,22 +357,25 @@ if not duomenys:
     duomenys = gauti_atsarginius_duomenis_standartiniu_api()
 
 main_posts = duomenys.get("main_posts") or []
-if len(main_posts) < 2:
-    kritine_klaida(
-        f"Rasta per mažai pagrindinių straipsnių ({len(main_posts)}). Siuntimas stabdomas."
-    )
+if len(main_posts) < 1:
+    print(">>> Šiandien naujų dar neišsiųstų viršinių straipsnių nerasta. Laiškas nesiunčiamas.")
+    sys.exit(0)
 
 quote = duomenys.get("quote")
 editorials = duomenys.get("editorials") or []
 most_read = duomenys.get("most_read") or []
 categories = duomenys.get("categories") or []
 posters = duomenys.get("posters") or []
-native_ads = duomenys.get("native_ads") or []
+direct_ad = duomenys.get("direct_ad")
+partner_showcase = duomenys.get("partner_showcase")
+issue_post_ids = duomenys.get("issue_post_ids") or []
 
 print(
     f">>> Surinkta: {len(main_posts)} viršiniai, {len(editorials)} komentarai,"
     f" {len(most_read)} skaitomiausi, {len(categories)} rubrikos,"
-    f" {len(posters)} afišos anonsai, citata: {'TAIP' if quote else 'NE'}."
+    f" {len(posters)} afišos anonsai, citata: {'TAIP' if quote else 'NE'},"
+    f" užsakovo baneris: {'TAIP' if direct_ad else 'NE'},"
+    f" partnerių vitrina: {partner_showcase.get('id') if isinstance(partner_showcase, dict) else 'NE'}."
 )
 
 # =========================================================================
@@ -350,6 +398,7 @@ html_parts.append(f"""<!DOCTYPE html>
     .mobile-img {{ width: 100% !important; height: auto !important; margin-bottom: 12px !important; }}
     .content-pad {{ padding-left: 16px !important; padding-right: 16px !important; }}
     .btn-col {{ display: block !important; width: 100% !important; margin-bottom: 8px !important; }}
+    .prod-col {{ display: block !important; width: 100% !important; padding: 0 0 12px 0 !important; }}
   }}
 </style>
 </head>
@@ -383,8 +432,8 @@ html_parts.append(f"""<!DOCTYPE html>
         </tr>
 """)
 
-# 1. DIENOS CITATA
-if quote and quote.get("text"):
+# 1. DIENOS CITATA (RODOMA TIK JEI DAR NEBUVO SIŲSTA)
+if isinstance(quote, dict) and quote.get("text"):
     q_link = su_utm(quote["link"], "dienos_citata") if quote.get("link") else ""
     q_text_html = esc(quote["text"])
     if q_link:
@@ -407,7 +456,7 @@ if quote and quote.get("text"):
         </tr>
     """)
 
-# 2. PAGRINDINĖ DIENOS TEMA (HERO)
+# 2. PAGRINDINĖ DIENOS TEMA (IŠMANIAI ATRINKTA PAGAL SKAITOMUMĄ TARP ŠIANDIENOS VIRŠINIŲ)
 hero_url = su_utm(hero.get("link"), "pagrindine_tema")
 hero_img = email_img(hero.get("image"), width=600, height=340)
 html_parts.append(f"""
@@ -458,7 +507,23 @@ if secondary_main:
         """)
     html_parts.append("          </td>\n        </tr>")
 
-# 3. NUOMONĖS IR KOMENTARAI (SU APVALIOMIS AUTORIŲ NUOTRAUKOMIS)
+# TIESIOGINĖ UŽSAKOVO REKLAMA IŠ „📢 REKLAMOS VALDYMAS“ (JEI ŠIUO METU YRA AKTYVI UŽSAKOVO KAMPANIJA)
+if isinstance(direct_ad, dict) and direct_ad.get("image") and direct_ad.get("click_url"):
+    ad_img = email_img(direct_ad["image"], width=600)
+    ad_click = uzkoduoti_url(direct_ad["click_url"])
+    ad_lbl = esc(direct_ad.get("label") or "Reklama")
+    html_parts.append(f"""
+        <tr>
+          <td class="content-pad" style="padding: 8px 28px 18px 28px;">
+            <div style="font-size:10px; text-transform:uppercase; letter-spacing:1px; color:#999999; text-align:center; margin-bottom:5px;">{ad_lbl}</div>
+            <a href="{ad_click}" target="_blank" rel="noopener sponsored" style="text-decoration:none;">
+              <img src="{ad_img}" alt="{esc(direct_ad.get('client') or direct_ad.get('title') or 'Reklama')}" width="544" style="display:block; width:100%; max-width:544px; height:auto; border-radius:6px; border:0;">
+            </a>
+          </td>
+        </tr>
+    """)
+
+# 3. NUOMONĖS IR KOMENTARAI (TIK JEI YRA NAUJŲ, DAR NESIŲSTŲ TEKSTŲ)
 if editorials:
     html_parts.append(f"""
         <tr>
@@ -489,7 +554,7 @@ if editorials:
         """)
     html_parts.append("          </td>\n        </tr>")
 
-# 4. SKAITOMIAUSI ŠIANDIEN
+# 4. SKAITOMIAUSI TEKSTAI (BE DUBLIKATŲ SU VAKARYKŠČIAIS)
 if most_read:
     html_parts.append(f"""
         <tr>
@@ -511,32 +576,7 @@ if most_read:
         """)
     html_parts.append("          </td>\n        </tr>")
 
-# REKLAMOS BANERIS (IŠ WP ACF ARBA REKLAMOS MODULIO)
-if native_ads:
-    ad = native_ads[0]
-    ad_img = email_img(ad.get("image"), width=600)
-    ad_url = ad.get("url", "https://www.bernardinai.lt/")
-    html_parts.append(f"""
-        <tr>
-          <td class="content-pad" style="padding: 12px 28px;">
-            <div style="font-size:10px; text-transform:uppercase; letter-spacing:1px; color:#999999; text-align:center; margin-bottom:4px;">Partnerių pasiūlymas</div>
-            <a href="{esc(ad_url)}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;">
-              <img src="{ad_img}" alt="{esc(ad.get('alt', 'Reklama'))}" width="544" style="display:block; width:100%; max-width:544px; height:auto; border-radius:6px; border:0;">
-            </a>
-          </td>
-        </tr>
-    """)
-else:
-    try:
-        from reklamos import gauti_reklamos_bloka
-
-        rek_html = gauti_reklamos_bloka("kasdienis", 0, "email")
-        if rek_html:
-            html_parts.append(f'<tr><td class="content-pad" style="padding: 8px 28px;">{rek_html}</td></tr>')
-    except Exception:
-        pass
-
-# 5. RUBRIKŲ APŽVALGA (RELIGIJA, VISUOMENĖ, KULTŪRA, ŠEIMA, DIALOGAI)
+# 5. RUBRIKŲ APŽVALGA (RODOMOS TIK TOS RUBRIKOS, KURIOSE YRA NAUJŲ TEKSTŲ)
 if categories:
     html_parts.append(f"""
         <tr>
@@ -580,7 +620,78 @@ if categories:
         html_parts.append("            </div>")
     html_parts.append("          </td>\n        </tr>")
 
-# 6. AFIŠA – RENGINIAI IR KVIETIMAI
+# 6. PARTNERIŲ VITRINA IŠ „🎁 PARTNERIŲ VITRINOS“ ĮSKIEPIO (MERCYSHOP / GYMGLISH SU STATISTIKA)
+if isinstance(partner_showcase, dict) and partner_showcase.get("items"):
+    ps_accent = esc(partner_showcase.get("accent") or "#a01b1b")
+    ps_badge = esc(partner_showcase.get("badge") or "Partnerių vitrina")
+    ps_heading = esc(partner_showcase.get("heading") or "")
+    ps_sub = esc(partner_showcase.get("sub") or "")
+    ps_btn_lbl = esc(partner_showcase.get("btn_label") or "Sužinoti daugiau →")
+    ps_btn_url = uzkoduoti_url(partner_showcase.get("btn_url") or "https://www.bernardinai.lt/")
+    ps_items = partner_showcase.get("items")[:3]
+
+    html_parts.append(f"""
+        <tr>
+          <td class="content-pad" style="padding: 10px 28px 22px 28px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#fdfbf7; border:1px solid #ead8d6; border-left:4px solid {ps_accent}; border-radius:8px;">
+              <tr>
+                <td style="padding: 18px 18px 14px 18px;">
+                  <div style="display:inline-block; background-color:{ps_accent}; color:#ffffff; font-size:10px; font-weight:bold; text-transform:uppercase; letter-spacing:0.6px; padding:3px 9px; border-radius:4px; margin-bottom:8px;">{ps_badge}</div>
+                  <div style="font-family: Georgia, serif; font-size:18px; font-weight:bold; color:{TEXT_MAIN}; line-height:1.3; margin-bottom:6px;">{ps_heading}</div>
+                  {f'<div style="font-size:13px; color:#555555; line-height:1.45; margin-bottom:14px;">{ps_sub}</div>' if ps_sub else ''}
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:12px;">
+                    <tr>
+    """)
+
+    col_w = int(100 / max(1, len(ps_items)))
+    for idx_p, p_it in enumerate(ps_items):
+        p_url = uzkoduoti_url(p_it.get("url") or ps_btn_url)
+        p_title = esc(p_it.get("title"))
+        p_price = esc(p_it.get("price"))
+        p_cta = esc(p_it.get("cta") or "Peržiūrėti →")
+        raw_p_img = p_it.get("image") or ""
+        pad_r = "8px" if idx_p < len(ps_items) - 1 else "0"
+
+        img_block = ""
+        if raw_p_img:
+            p_img_src = email_img(raw_p_img, width=220, height=160, crop=False)
+            img_block = f"""
+                        <a href="{p_url}" target="_blank" rel="noopener sponsored" style="text-decoration:none;">
+                          <img src="{p_img_src}" alt="{p_title}" width="150" style="display:block; width:100%; max-width:150px; height:auto; margin:0 auto 8px auto; border-radius:4px; border:0;">
+                        </a>
+            """
+
+        html_parts.append(f"""
+                      <td class="prod-col" width="{col_w}%" valign="top" style="width:{col_w}%; padding-right:{pad_r};">
+                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff; border:1px solid #ead8d6; border-radius:6px;">
+                          <tr>
+                            <td style="padding:10px;">
+                              {img_block}
+                              <div style="font-size:13px; font-weight:bold; line-height:1.35; margin-bottom:6px;">
+                                <a href="{p_url}" target="_blank" rel="noopener sponsored" style="color:{TEXT_MAIN}; text-decoration:none;">{p_title}</a>
+                              </div>
+                              {f'<div style="font-size:12px; font-weight:bold; color:#1b7e2b; margin-bottom:4px;">{p_price}</div>' if p_price else ''}
+                              <a href="{p_url}" target="_blank" rel="noopener sponsored" style="font-size:12px; font-weight:bold; color:{ps_accent}; text-decoration:none;">{p_cta}</a>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+        """)
+
+    html_parts.append(f"""
+                    </tr>
+                  </table>
+                  <div style="text-align:right;">
+                    <a href="{ps_btn_url}" target="_blank" rel="noopener sponsored" style="display:inline-block; background-color:{ps_accent}; color:#ffffff; font-size:12px; font-weight:bold; text-decoration:none; padding:8px 16px; border-radius:5px;">{ps_btn_lbl}</a>
+                  </div>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+    """)
+
+# 7. AFIŠA – RENGINIAI IR KVIETIMAI (TIK AKTUALŪS IR DAR NESIŲSTI)
 if posters:
     afisa_all_url = su_utm("https://www.bernardinai.lt/afisa/", "afisa_visi")
     html_parts.append(f"""
@@ -606,28 +717,35 @@ if posters:
         """)
     html_parts.append("          </td>\n        </tr>")
 
-# 7. PARAMOS BLOKAS IR REKVIZITAI
+# 8. PARAMOS BLOKAS IR REKVIZITAI (SU TIESIOGINIAIS STRIPE 5€ / 10€ / 25€ MYGTUKAIS)
 parama_url = su_utm("https://www.bernardinai.lt/parama/", "footer_parama")
+stripe_5 = "https://buy.stripe.com/eVqbJ22Me4Qh4Xd2V6aIM06"
+stripe_10 = "https://buy.stripe.com/28E7sM5YqfuVblBeDOaIM07"
+stripe_25 = "https://buy.stripe.com/6oU6oI2Me2I9ahx67iaIM08"
+
 html_parts.append(f"""
         <tr>
           <td class="content-pad" style="padding: 26px 28px; background-color:{BRAND_DARK}; color:#ffffff; text-align:center;">
             <div style="font-family: Georgia, serif; font-size:20px; font-weight:bold; margin-bottom:8px;">Palaikykite nepriklausomą „Bernardinai.lt“ žurnalistiką</div>
-            <p style="font-size:13px; line-height:1.55; color:#f2dedd; margin:0 0 18px 0;">
-              „Bernardinai.lt“ negauna lėšų iš rinkliavų katalikiškai žiniasklaidai ir gyvuoja tik skaitytojų paramos dėka. Skirkite vienkartinę arba periodinę paramą.
+            <p style="font-size:13px; line-height:1.55; color:#f2dedd; margin:0 0 16px 0;">
+              „Bernardinai.lt“ neturi politinių ar verslo šeimininkų ir gyvuoja tik skaitytojų paramos dėka. Pasirinkite paramos sumą arba visus būdus:
             </p>
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:18px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto 14px auto;">
               <tr>
-                <td class="btn-col" align="center" style="padding:4px;">
-                  <a href="{parama_url}" target="_blank" style="display:inline-block; background-color:#ffffff; color:{BRAND_DARK}; font-size:13px; font-weight:bold; text-decoration:none; padding:10px 16px; border-radius:4px;">Visi paramos būdai</a>
+                <td style="padding:0 5px;">
+                  <a href="{stripe_5}" target="_blank" style="display:inline-block; background-color:rgba(255,255,255,0.14); border:1px solid rgba(255,255,255,0.45); color:#ffffff; font-size:14px; font-weight:bold; text-decoration:none; padding:8px 16px; border-radius:6px;">☕ 5 €</a>
                 </td>
-                <td class="btn-col" align="center" style="padding:4px;">
-                  <a href="{parama_url}#paysera" target="_blank" style="display:inline-block; background-color:{BRAND_ACCENT}; color:#ffffff; font-size:13px; font-weight:bold; text-decoration:none; padding:10px 16px; border-radius:4px;">Per Paysera / banką</a>
+                <td style="padding:0 5px;">
+                  <a href="{stripe_10}" target="_blank" style="display:inline-block; background-color:{BRAND_ACCENT}; border:1px solid #ffffff; color:#ffffff; font-size:14px; font-weight:bold; text-decoration:none; padding:8px 18px; border-radius:6px;">❤️ 10 €</a>
                 </td>
-                <td class="btn-col" align="center" style="padding:4px;">
-                  <a href="{parama_url}#kortele" target="_blank" style="display:inline-block; background-color:#ffffff; color:{BRAND_DARK}; font-size:13px; font-weight:bold; text-decoration:none; padding:10px 16px; border-radius:4px;">Mokėjimo kortele</a>
+                <td style="padding:0 5px;">
+                  <a href="{stripe_25}" target="_blank" style="display:inline-block; background-color:rgba(255,255,255,0.14); border:1px solid rgba(255,255,255,0.45); color:#ffffff; font-size:14px; font-weight:bold; text-decoration:none; padding:8px 16px; border-radius:6px;">🌟 25 €</a>
                 </td>
               </tr>
             </table>
+            <div style="margin-bottom:18px;">
+              <a href="{parama_url}" target="_blank" style="display:inline-block; background-color:#ffffff; color:{BRAND_DARK}; font-size:13px; font-weight:bold; text-decoration:none; padding:10px 22px; border-radius:5px;">Visi paramos būdai (banku, kortele, Paysera) →</a>
+            </div>
             <div style="font-size:12px; line-height:1.6; color:#ebd4d2; border-top:1px solid rgba(255,255,255,0.2); padding-top:14px;">
               <strong>VŠĮ BERNARDINAI.LT</strong> &nbsp;|&nbsp; Įmonės kodas: 300671187<br>
               Sąskaitos Nr.: <strong>LT06 7044 0600 0598 4890</strong> (AB SEB bankas, kodas 70440, SWIFT: CBVILT2X)
@@ -749,6 +867,9 @@ if nl_rezimas in ("siusti", "juodrastis"):
                     ">>> Kasdienis naujienlaiškis sėkmingai perkeltas į OUTBOX"
                     " ir pradėtas siųsti prenumeratoriams!"
                 )
+            # Pažymime išsiųstus straipsnius ir citatą WordPress duomenų bazėje
+            q_hash = quote.get("hash", "") if isinstance(quote, dict) else ""
+            pazymeti_issiustus_straipsnius_wp(issue_post_ids, q_hash)
         else:
             print(
                 ">>> SAUGUS REŽIMAS: Laiškas išsaugotas jūsų MailerLite"
