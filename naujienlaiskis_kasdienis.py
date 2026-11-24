@@ -598,7 +598,7 @@ def suformuoti_laisko_tema(main_list, ed_list, cat_list, data_trumpa):
 # EL. LAIŠKO HTML FORMAVIMAS (600px, PRITAIKYTA MOBILIESIEMS IR OUTLOOK)
 # =========================================================================
 hero = main_posts[0]
-secondary_main = main_posts[1:5]
+secondary_main = main_posts[1:]
 
 html_parts = []
 html_parts.append(f"""<!DOCTYPE html>
