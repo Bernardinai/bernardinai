@@ -176,23 +176,46 @@ def uzkoduoti_url(url):
     if not url:
         return ""
     url = url.replace("&#038;", "&").replace("&amp;", "&").strip()
+    # Vidinėse sekimo nuorodose (?brn_shop_go= arba ?brn_ad_click=) išsaugome originalų parametrų kodavimą ir HMAC parašą
+    if "brn_shop_go=" in url or "brn_ad_click=" in url:
+        return url.replace(" ", "%20")
     parts = urllib.parse.urlsplit(url)
     clean_path = urllib.parse.quote(
         urllib.parse.unquote(parts.path), safe="/:@!$&'()*+,;=-._~"
     )
-    clean_query = urllib.parse.quote(
-        urllib.parse.unquote(parts.query), safe="=&:@!$'()*+,;-._~%"
-    )
+    if parts.query:
+        q_pairs = urllib.parse.parse_qsl(parts.query, keep_blank_values=True)
+        clean_query = urllib.parse.urlencode(q_pairs, doseq=True)
+    else:
+        clean_query = ""
     return urllib.parse.urlunsplit(
         (parts.scheme or "https", parts.netloc, clean_path, clean_query, "")
     )
 
 
+def su_kalba_ir_utm(url, lang_code):
+    """Prideda automatinio vertimo parametrą ?tr=... ir naujienlaiškio UTM žymas."""
+    clean = uzkoduoti_url(url) or "https://www.bernardinai.lt/"
+    parts = urllib.parse.urlsplit(clean)
+    q_dict = dict(urllib.parse.parse_qsl(parts.query, keep_blank_values=True))
+    q_dict["tr"] = lang_code
+    q_dict["utm_source"] = "mailerlite"
+    q_dict["utm_medium"] = "email"
+    q_dict["utm_campaign"] = f"dienos_temos_{today_str}"
+    q_dict["utm_content"] = f"kalba_{lang_code}"
+    return urllib.parse.urlunsplit(
+        (parts.scheme or "https", parts.netloc, parts.path, urllib.parse.urlencode(q_dict), "")
+    )
+
+
 def email_img(raw_url, width=600, height=0, crop=True):
-    """Konvertuoja paveikslėlius į JPG, kad juos rodytų visos el. pašto programos (įskaitant Outlook)."""
+    """Konvertuoja WebP nuotraukas į JPG (Outlook suderinamumui), o paruoštus aštrius PNG grafinius banerius atiduoda tiesiogiai."""
     clean = uzkoduoti_url(raw_url)
     if not clean:
         clean = "https://www.bernardinai.lt/wp-content/uploads/Bernardinai500x500-jpg-webp.webp"
+    # Mūsų el. paštui sugeneruoti PNG baneriai ir Gymglish kortelės jau yra lengvi .png failai – nesiunčiame per JPG glaudinimą, kad tekstas liktų ryškus
+    if ("/brn-nl-assets/" in clean or "/nl-asset/" in clean) and clean.lower().endswith(".png"):
+        return clean
     be_schemos = re.sub(r"^https?://", "", clean, flags=re.I)
     params = f"url={urllib.parse.quote(be_schemos, safe='')}&output=jpg&w={width}&q=85"
     if height > 0:
@@ -933,7 +956,46 @@ if posters:
         """)
     html_parts.append("          </td>\n        </tr>")
 
-# 8. PARAMOS BLOKAS IR REKVIZITAI (SU TIESIOGINIAIS STRIPE 5€ / 10€ / 25€ MYGTUKAIS)
+# 8. NUOLATINIS DAUGIAKALBYSTĖS PRIMINIMAS (SKAITYMAS IR DALIJIMASIS 40+ KALBŲ)
+share_base_url = hero.get("link") or "https://www.bernardinai.lt/"
+kalbu_mygtukai = [
+    ("en", "🇬🇧 English"),
+    ("pl", "🇵🇱 Polski"),
+    ("uk", "🇺🇦 Українська"),
+    ("de", "🇩🇪 Deutsch"),
+    ("it", "🇮🇹 Italiano"),
+    ("fr", "🇫🇷 Français"),
+]
+kalbu_piliules_html = "".join(
+    f'<a href="{su_kalba_ir_utm(share_base_url, l_code)}" target="_blank" '
+    f'style="display:inline-block; background-color:#ffffff; border:1px solid #d8cfc2; '
+    f'color:{TEXT_MAIN}; font-size:12px; font-weight:bold; text-decoration:none; '
+    f'padding:6px 11px; border-radius:99px; margin:3px 4px 3px 0;">{l_label}</a>'
+    for l_code, l_label in kalbu_mygtukai
+)
+
+html_parts.append(f"""
+        <tr>
+          <td class="content-pad" style="padding: 6px 28px 22px 28px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f9f6f1; border:1px solid #e6ddd0; border-left:4px solid {BRAND_DARK}; border-radius:8px;">
+              <tr>
+                <td style="padding: 16px 18px;">
+                  <div style="font-size:10px; font-weight:bold; text-transform:uppercase; letter-spacing:1px; color:{BRAND_DARK}; margin-bottom:5px;">🌐 Bernardinai.lt pasauliui &bull; 40+ kalbų</div>
+                  <div style="font-family: Georgia, serif; font-size:17px; font-weight:bold; color:{TEXT_MAIN}; line-height:1.3; margin-bottom:6px;">Turite bičiulių ar artimųjų užsienyje? Dalinkitės kitomis kalbomis</div>
+                  <div style="font-size:13px; color:#555555; line-height:1.5; margin-bottom:10px;">
+                    Kiekvieną „Bernardinai.lt“ tekstą svetainėje galima skaityti su automatiniu vertimu (viršuje paspaudus mygtuką <strong>🌐 LT</strong>). Atidarykite ir persiųskite šiandienos pagrindinę temą norima kalba:
+                  </div>
+                  <div style="line-height:1.8;">
+                    {kalbu_piliules_html}
+                  </div>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+""")
+
+# 9. PARAMOS BLOKAS IR REKVIZITAI (SU TIESIOGINIAIS STRIPE 5€ / 10€ / 25€ MYGTUKAIS)
 parama_url = su_utm("https://www.bernardinai.lt/parama/", "footer_parama")
 stripe_5 = "https://buy.stripe.com/eVqbJ22Me4Qh4Xd2V6aIM06"
 stripe_10 = "https://buy.stripe.com/28E7sM5YqfuVblBeDOaIM07"
@@ -1051,6 +1113,8 @@ if nl_rezimas in ("siusti", "juodrastis"):
             plain_lines.append(f"- {s.get('title')}: {s.get('link')}")
         plain_lines.extend(
             [
+                "",
+                f"Skaitykite ir dalinkitės „Bernardinai.lt“ 40+ kalbų (EN/PL/UK/DE/IT): {su_kalba_ir_utm(share_base_url, 'en')}",
                 "",
                 "Peržiūrėti naršyklėje: {$url}",
                 "Atsisakyti naujienlaiškio: {$unsubscribe}",
