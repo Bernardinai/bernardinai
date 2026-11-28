@@ -12,10 +12,7 @@ from zoneinfo import ZoneInfo
 
 LT_TZ = ZoneInfo("Europe/Vilnius")
 
-CF_SECRET_KEY = (
-    os.environ.get("CF_AUTOMATION_KEY", "").strip()
-    or "BernardinuNaujienlaiskisLabaiSlapt@00"
-)
+CF_SECRET_KEY = os.environ.get("CF_AUTOMATION_KEY", "").strip()
 INTERNAL_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     " (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
@@ -36,7 +33,7 @@ def kritine_klaida(pranesimas):
 
 
 parser = argparse.ArgumentParser(
-    description="Bernardinai.lt kasdienio 18:00 val. naujienlaiškio generatorius"
+    description="Bernardinai.lt kasdienio 18:00 val. naujienlaiškio generatorius (v2.0)"
 )
 parser.add_argument(
     "--naujienlaiskis",
@@ -54,6 +51,7 @@ auto_18val_enabled = (
 now_lt = datetime.datetime.now(LT_TZ)
 
 # Jei paleista pagal tvarkaraštį arba išorinį laikmatį (repository_dispatch), tikriname įjungimo vėliavėlę
+# Leidžiame 18:00–19:35 LT langą, kad GitHub Actions eilės vėlavimas neatšauktų dienos laidos!
 if event_name in ("schedule", "repository_dispatch"):
     if not auto_18val_enabled:
         print(
@@ -61,12 +59,15 @@ if event_name in ("schedule", "repository_dispatch"):
             " (AKTYVUOTI_KASDIENI_SIUNTIMA='ne'). Procesas sustabdytas."
         )
         sys.exit(0)
-    if event_name == "schedule" and now_lt.hour != 18:
-        print(
-            f">>> Dabar Lietuvoje {now_lt.strftime('%H:%M')} val. Laukiama"
-            " tikslaus 18:00 val. lango."
-        )
-        sys.exit(0)
+    if event_name == "schedule":
+        in_primary_hour = now_lt.hour == 18
+        in_delayed_grace = now_lt.hour == 19 and now_lt.minute <= 35
+        if not (in_primary_hour or in_delayed_grace):
+            print(
+                f">>> Dabar Lietuvoje {now_lt.strftime('%H:%M')} val. Laukiama"
+                " 18:00 val. lango (su atsarga iki 19:35)."
+            )
+            sys.exit(0)
 
 raw_nl = (
     args.naujienlaiskis or os.environ.get("SIUSTI_NAUJIENLAISKI", "")
@@ -90,6 +91,12 @@ else:
         " juodrastis, siusti, nesiusti."
     )
 
+if not CF_SECRET_KEY:
+    kritine_klaida(
+        "Nerastas CF_AUTOMATION_KEY aplinkos kintamasis! Įrašykite jį į"
+        " GitHub Secrets (Settings -> Secrets and variables -> Actions)."
+    )
+
 menesiai = [
     "sausio", "vasario", "kovo", "balandžio", "gegužės", "birželio",
     "liepos", "rugpjūčio", "rugsėjo", "spalio", "lapkričio", "gruodžio",
@@ -107,7 +114,7 @@ data_antrastei = (
 data_trumpiems = f"{now_lt.year} m. {menesiai[now_lt.month - 1]} {now_lt.day} d."
 
 print("=================================================================")
-print("LEIDINYS:       Bernardinai.lt kasdienis naujienlaiškis (Dienos temos)")
+print("LEIDINYS:       Bernardinai.lt kasdienis naujienlaiškis (v2.0)")
 print(f"DATA:           {data_antrastei}")
 print(f"REŽIMAS:        {nl_rezimas}")
 print("=================================================================")
@@ -123,12 +130,13 @@ group_id = int(
 )
 
 
-def ar_siandien_jau_issiusta(ml_key):
-    """Papildoma apsauga nuo dvigubo išsiuntimo tą pačią dieną."""
+def ar_siandien_jau_issiusta(ml_key, strict_on_error=False):
+    """Apsauga nuo dvigubo išsiuntimo tą pačią dieną (tikrina 20 paskutinių kampanijų)."""
+    had_network_error = False
     for status_type in ("outbox", "sent"):
         try:
             req = urllib.request.Request(
-                f"https://api.mailerlite.com/api/v2/campaigns/{status_type}?limit=5",
+                f"https://api.mailerlite.com/api/v2/campaigns/{status_type}?limit=20",
                 headers={
                     "X-MailerLite-ApiKey": ml_key,
                     "Content-Type": "application/json",
@@ -162,12 +170,19 @@ def ar_siandien_jau_issiusta(ml_key):
                             and today_str in created
                         ):
                             return True
-        except Exception:
-            pass
+        except Exception as e:
+            print(f">>> Pastaba: nepavyko patikrinti MailerLite {status_type} sąrašo ({e}).")
+            had_network_error = True
+
+    if strict_on_error and had_network_error:
+        print(">>> Vėlyvas 19 val. langas ir nepasiekiamas MailerLite sąrašas – saugiai stabdome.")
+        return True
     return False
 
 
-if nl_rezimas == "siusti" and ar_siandien_jau_issiusta(api_key):
+if nl_rezimas == "siusti" and ar_siandien_jau_issiusta(
+    api_key, strict_on_error=(event_name == "schedule" and now_lt.hour == 19)
+):
     print(">>> Šiandienos vakarinis naujienlaiškis jau išsiųstas! Stabdome.")
     sys.exit(0)
 
@@ -176,7 +191,6 @@ def uzkoduoti_url(url):
     if not url:
         return ""
     url = url.replace("&#038;", "&").replace("&amp;", "&").strip()
-    # Vidinėse sekimo nuorodose (?brn_shop_go= arba ?brn_ad_click=) išsaugome originalų parametrų kodavimą ir HMAC parašą
     if "brn_shop_go=" in url or "brn_ad_click=" in url:
         return url.replace(" ", "%20")
     parts = urllib.parse.urlsplit(url)
@@ -209,15 +223,23 @@ def su_kalba_ir_utm(url, lang_code):
 
 
 def email_img(raw_url, width=600, height=0, crop=True):
-    """Konvertuoja WebP nuotraukas į JPG (Outlook suderinamumui), o paruoštus aštrius PNG grafinius banerius atiduoda tiesiogiai."""
+    """
+    Pirmenybę teikia tiesioginėms Bernardinai.lt .jpg / .png miniatiūroms (iš v1.4.0 brn-nl-thumbs ir brn-nl-assets)
+    be jokios priklausomybės nuo trečiosios šalies images.weserv.nl!
+    Per weserv.nl konvertuoja tik tada, jei atsarginiu atveju liko nekonvertuotas .webp failas.
+    """
     clean = uzkoduoti_url(raw_url)
     if not clean:
         clean = "https://www.bernardinai.lt/wp-content/uploads/Bernardinai500x500-jpg-webp.webp"
-    # Mūsų el. paštui sugeneruoti PNG baneriai ir Gymglish kortelės jau yra lengvi .png failai – nesiunčiame per JPG glaudinimą, kad tekstas liktų ryškus
-    if ("/brn-nl-assets/" in clean or "/nl-asset/" in clean) and clean.lower().endswith(".png"):
+
+    parsed = urllib.parse.urlsplit(clean)
+    path_low = parsed.path.lower()
+
+    if path_low.endswith((".jpg", ".jpeg", ".png", ".gif")):
         return clean
-    be_schemos = re.sub(r"^https?://", "", clean, flags=re.I)
-    params = f"url={urllib.parse.quote(be_schemos, safe='')}&output=jpg&w={width}&q=85"
+
+    raw_unquoted = urllib.parse.unquote(re.sub(r"^https?://", "", clean, flags=re.I))
+    params = f"url={urllib.parse.quote(raw_unquoted, safe='')}&output=jpg&w={width}&q=85"
     if height > 0:
         fit_mode = "cover" if crop else "contain&bg=white"
         params += f"&h={height}&fit={fit_mode}"
@@ -232,7 +254,6 @@ def su_utm(url, saltinis_blokas):
     clean = uzkoduoti_url(url)
     if not clean:
         return "https://www.bernardinai.lt/"
-    # Jei tai jau vidinė sekimo nuoroda (?brn_ad_click arba ?brn_shop_go), jos nekeičiame
     if "brn_ad_click=" in clean or "brn_shop_go=" in clean:
         return clean
     sep = "&" if "?" in clean else "?"
@@ -240,6 +261,41 @@ def su_utm(url, saltinis_blokas):
         f"{clean}{sep}utm_source=mailerlite&utm_medium=email"
         f"&utm_campaign=dienos_temos_{today_str}&utm_content={saltinis_blokas}"
     )
+
+
+def formatuoti_meta_eilute(item, hero_mode=False):
+    """Sudėlioja aiškią autoriaus / rubrikos, medijos formato (🎥/🎧) ir skaitymo trukmės (⏱) eilutę."""
+    parts_html = []
+    media_lbl = str(item.get("media_label") or "").strip()
+    if media_lbl:
+        parts_html.append(
+            f'<span style="display:inline-block; background-color:#fdf0e8; color:{BRAND_ACCENT};'
+            f' border:1px solid #f2cfb8; font-size:11px; font-weight:bold; padding:1px 7px;'
+            f' border-radius:3px; margin-right:6px; text-transform:none;">{esc(media_lbl)}</span>'
+        )
+
+    author_txt = str(item.get("author") or "Bernardinai.lt").strip()
+    prim_cat = str(item.get("primary_category") or "").strip()
+    if author_txt.lower() == "bernardinai.lt" and prim_cat:
+        label_txt = f"Bernardinai.lt • {prim_cat}"
+    else:
+        label_txt = author_txt
+
+    author_color = TEXT_MUTED if hero_mode else BRAND_ACCENT
+    font_sz = "12px" if hero_mode else "11px"
+    parts_html.append(
+        f'<span style="font-size:{font_sz}; font-weight:bold; color:{author_color};'
+        f' text-transform:uppercase;">{esc(label_txt)}</span>'
+    )
+
+    read_time = str(item.get("reading_time") or "").strip()
+    if read_time:
+        parts_html.append(
+            f'<span style="font-size:{font_sz}; color:#7a7a7a; font-weight:normal;'
+            f' text-transform:none;">&nbsp;&bull;&nbsp;⏱ {esc(read_time)}</span>'
+        )
+
+    return "".join(parts_html)
 
 
 def gauti_duomenis_is_wp_api():
@@ -254,10 +310,11 @@ def gauti_duomenis_is_wp_api():
         },
     )
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=35) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             if isinstance(data, dict) and "main_posts" in data:
-                print(">>> Duomenys sėkmingai gauti iš /wp-json/custom/v1/daily-newsletter!")
+                ver = data.get("version", "1.3.x")
+                print(f">>> Duomenys sėkmingai gauti iš /wp-json/custom/v1/daily-newsletter (API v{ver})!")
                 return data
     except urllib.error.HTTPError as e:
         print(
@@ -273,7 +330,7 @@ def gauti_duomenis_is_wp_api():
 
 
 def pazymeti_issiustus_straipsnius_wp(post_ids, quote_hash=""):
-    """Tik po tikro išsiuntimo pažymi straipsnių ID ir citatą WordPress duomenų bazėje, kad kitą dieną nesikartotų."""
+    """Tik po tikro išsiuntimo pažymi straipsnių ID ir citatą WordPress duomenų bazėje."""
     if not post_ids and not quote_hash:
         return
     endpoint = "https://www.bernardinai.lt/wp-json/custom/v1/daily-newsletter/mark-sent"
@@ -332,6 +389,9 @@ def gauti_atsarginius_duomenis_standartiniu_api():
                 title = isvalyti_html_teksta(p.get("title", {}).get("rendered", ""), 220)
                 if "savaitraštis nr." in title.lower():
                     continue
+                raw_body = p.get("content", {}).get("rendered", "")
+                words_cnt = len(re.sub(r"<[^>]+>", " ", raw_body).split())
+                read_m = max(1, round(words_cnt / 190)) if words_cnt > 0 else 0
                 excerpt = isvalyti_html_teksta(
                     p.get("acf", {}).get("short_description", "")
                     or p.get("excerpt", {}).get("rendered", ""),
@@ -341,7 +401,11 @@ def gauti_atsarginius_duomenis_standartiniu_api():
                 if not img:
                     media = p.get("_embedded", {}).get("wp:featuredmedia", [])
                     if media and isinstance(media[0], dict):
-                        img = media[0].get("source_url", "")
+                        sizes = media[0].get("media_details", {}).get("sizes", {})
+                        img = (
+                            sizes.get("medium_large", {}).get("source_url")
+                            or media[0].get("source_url", "")
+                        )
                 used_ids.add(pid)
                 items.append(
                     {
@@ -353,6 +417,8 @@ def gauti_atsarginius_duomenis_standartiniu_api():
                         "author": "Bernardinai.lt",
                         "author_avatar": "",
                         "poster_label": "",
+                        "media_label": "🎥 Vaizdo įrašas" if "youtube.com/embed" in raw_body else "",
+                        "reading_time": f"{read_m} min." if read_m else "",
                     }
                 )
                 if len(items) >= limit:
@@ -379,6 +445,7 @@ def gauti_atsarginius_duomenis_standartiniu_api():
         "editorials": [],
         "most_read": [],
         "categories": categories,
+        "day_with_god": None,
         "posters": [],
         "direct_ad": None,
         "partner_showcase": None,
@@ -390,7 +457,8 @@ duomenys = gauti_duomenis_is_wp_api()
 if not duomenys:
     duomenys = gauti_atsarginius_duomenis_standartiniu_api()
 
-main_posts = duomenys.get("main_posts") or []
+# Apsaugome viršinių skaičių iki maks. 5 (1 Hero + 4 Aktualijos)
+main_posts = (duomenys.get("main_posts") or [])[:5]
 if len(main_posts) < 1:
     print(">>> Šiandien naujų dar neišsiųstų viršinių straipsnių nerasta. Laiškas nesiunčiamas.")
     sys.exit(0)
@@ -399,49 +467,60 @@ quote = duomenys.get("quote")
 editorials = duomenys.get("editorials") or []
 most_read = duomenys.get("most_read") or []
 categories = duomenys.get("categories") or []
+day_with_god = duomenys.get("day_with_god")
 posters = duomenys.get("posters") or []
 direct_ad = duomenys.get("direct_ad")
 partner_showcase = duomenys.get("partner_showcase")
 issue_post_ids = duomenys.get("issue_post_ids") or []
 
+dwg_cnt = len(day_with_god.get("items") or []) if isinstance(day_with_god, dict) else 0
 print(
     f">>> Surinkta: {len(main_posts)} viršiniai, {len(editorials)} komentarai,"
     f" {len(most_read)} skaitomiausi, {len(categories)} rubrikos,"
-    f" {len(posters)} afišos anonsai, citata: {'TAIP' if quote else 'NE'},"
+    f" Diena su Dievu: {dwg_cnt}, {len(posters)} afišos anonsai,"
+    f" citata: {'TAIP' if quote else 'NE'},"
     f" užsakovo baneris: {'TAIP' if direct_ad else 'NE'},"
     f" partnerių vitrina: {partner_showcase.get('id') if isinstance(partner_showcase, dict) else 'NE'}."
 )
 
+print(">>> Viršinių straipsnių reitingas pagal skaitomumo greitį (velocity):")
+for idx_dbg, mp_dbg in enumerate(main_posts, start=1):
+    pin_tag = " [📌 REDAKTORIAUS FIKSUOTA]" if mp_dbg.get("pinned_hero") else ""
+    sc_val = mp_dbg.get("views_score", "-")
+    rv_val = mp_dbg.get("raw_views", "-")
+    hr_val = mp_dbg.get("hours_age", "-")
+    print(
+        f"    {idx_dbg}. [greitis={sc_val}, perž.={rv_val}, amžius={hr_val} val.]{pin_tag}"
+        f" {mp_dbg.get('title', '')[:78]}"
+    )
+
 
 # =========================================================================
-# LAIŠKO TEMOS (SUBJECT) FORMAVIMAS: REDAKCINIS DI + ŠVARUS ATSARGINIS
+# LAIŠKO TEMOS (SUBJECT) FORMAVIMAS: SINCHRONIZUOTA SU #1 HERO TEMA!
 # =========================================================================
 def isvalyti_viena_antraste_temai(antraste):
     """Paruošia tikrą redakcijos antraštę be dirbtinio karpymo ir gramatikos laužymo."""
     t = re.sub(r"\s+", " ", str(antraste or "")).strip()
     if not t:
         return ""
-    # Nuimame tik išorinius brūkšnius pačioje pradžioje/pabaigoje, bet paliekame vidines kabutes „...“ ir klaustukus!
     t = re.sub(r"^[\-–—\s]+|[\-–—\s]+$", "", t).strip()
-    # Jei antraštėje yra dvitaškis (pvz., „Autorius: tikroji antraštė“) ir visa eilutė per ilga – imame dalį po dvitaškio
     if ":" in t and len(t) > 62:
         kaire, desine = [d.strip() for d in t.split(":", 1)]
         desine_clean = re.sub(r'^[„"«\s]+|[“"»\s]+$', "", desine).strip()
         if len(desine_clean) >= 18:
             t = desine_clean[0].upper() + desine_clean[1:]
-    # Pašaliname tik tašką gale (paliekant ? arba !)
     t = t.rstrip(".")
     return t
 
 
 def isskirti_temos_akcenta(antraste, max_ilgis=42):
-    """Atsarginis trumpiklis antrajai temai – tik jei frazė natūraliai trumpa ir be dviprasmiškų jungtukų."""
+    """Atsarginis trumpiklis antrajai temai."""
     t = re.sub(r"\s+", " ", str(antraste or "")).strip()
     if not t:
         return ""
     if ":" in t:
         kaire, desine = [d.strip() for d in t.split(":", 1)]
-        kaire_be_kab = re.sub(r'[„“"\']', "", kaire).strip()
+        kaire_be_kab = re.sub(r"[„“\"']", "", kaire).strip()
         desine_be_kab = re.sub(r'^[„"«\s]+|[“"»\s]+$', "", desine).strip()
         has_initials = bool(re.search(r"\b[A-ZĄČĘĖĮŠŲŪŽ]\.\s*[A-ZĄČĘĖĮŠŲŪŽ]", kaire))
         if not has_initials and 10 <= len(kaire_be_kab) <= max_ilgis and "?" not in kaire_be_kab:
@@ -468,7 +547,6 @@ def ar_tema_kokybiska(cand_txt):
     po_dvitaskio = cand_txt[len("Bernardinai.lt šiandien: ") :].strip()
     if ":" in po_dvitaskio:
         return False
-    # Neleidžiame pasikartojančių „ir ... ir ...“
     if len(re.findall(r"\bir\b", po_dvitaskio.lower())) > 1:
         return False
     draudziami = (
@@ -481,14 +559,15 @@ def ar_tema_kokybiska(cand_txt):
 
 
 def sugeneruoti_laisko_tema_su_di(main_list, ed_list):
-    """Suformuluoja santūrią, taisyklingos lietuvių kalbos redakcinę temą (tik jei aplinkoje yra API raktas)."""
+    """Suformuluoja redakcinę temą, kurios pirmasis akcentas VISADA atspindi #1 pagrindinę dienos temą."""
     rinkinys = list(main_list[:4]) + list(ed_list[:2])
     antrastes = []
-    for s in rinkinys:
+    for idx_s, s in enumerate(rinkinys):
         ttl = (s.get("title") or "").strip()
         exc = (s.get("excerpt") or "").strip()
         if ttl:
-            antrastes.append(f"- Antraštė: {ttl}" + (f" (Kontekstas: {exc[:110]})" if exc else ""))
+            zymeklis = "[NR. 1 – PAGRINDINĖ VIRŠELIO TEMA (PRIVALOMA PIRMOJI)] " if idx_s == 0 else f"[NR. {idx_s + 1}] "
+            antrastes.append(f"- {zymeklis}Antraštė: {ttl}" + (f" (Kontekstas: {exc[:110]})" if exc else ""))
     if not antrastes:
         return ""
 
@@ -497,25 +576,18 @@ def sugeneruoti_laisko_tema_su_di(main_list, ed_list):
         "Pagal šios dienos pagrindinius tekstus parašyk VIENĄ el. laiško temos eilutę (Subject).\n\n"
         "GRIEŽTI KALBOS IR STILIAUS REIKALAVIMAI:\n"
         "1. Privalo prasidėti tiksliai taip: Bernardinai.lt šiandien: \n"
-        "2. Stilius – santūrus, intelektualus, žurnalistinis, be menkiausio dirbtinio intelekto ar reklamos atspalvio.\n"
-        "3. Pasirink 2 svarbiausias dienos temas ir suformuluok jas kaip glaudžius, gramatiškai suderintus vardinius junginius "
-        "(atsakant į klausimą „kas?“ arba „apie ką?“), atskirtus KABLIATAŠKIU (; ) arba vienu jungtuku „ir“.\n"
-        "4. GRIEŽTAI DRAUDŽIAMA mechaniškai suklijuoti du nesuderintus sakinius ar klausimus, vartoti žodį „ir“ daugiau nei vieną kartą, "
-        "naudoti antrą dvitaškį, daugtaškius (...) ar kanceliarines/reklamines klišes („apžvelgiame“, „kviečiame“, „įkvepiantis“, „aktualijos“).\n"
-        "5. Nepriekaištinga lietuvių kalba: lietuviškos kabutės „...“, taisyklinga didžiųjų raidžių rašyba (Dievas, Bažnyčia, Šventasis Raštas, Visatos Valdovas, valstybių ir asmenų vardai). "
-        "Pirmasis žodis po „Bernardinai.lt šiandien: “ rašomas mažąja raide, nebent tai tikrinis vardas.\n"
+        "2. Pirmasis akcentas iškart po dvitaškio PRIVALO atspindėti [NR. 1 – PAGRINDINĖ VIRŠELIO TEMA] straipsnį, kad laiško tema 100 % sutaptų su atidaryto laiško viršeliu! Antrąją temą (po kabliataškio '; ' arba vieno jungtuko 'ir') parink iš NR. 2–6 kaip stipriausią teminį kontrastą.\n"
+        "3. Stilius – santūrus, intelektualus, žurnalistinis, suformuluotas kaip glaudūs, gramatiškai suderinti vardiniai junginiai (atsakant į klausimą „kas?“ arba „apie ką?“).\n"
+        "4. GRIEŽTAI DRAUDŽIAMA mechaniškai suklijuoti du nesuderintus sakinius, vartoti žodį „ir“ daugiau nei vieną kartą, naudoti antrą dvitaškį, daugtaškius (...) ar reklamines klišes („apžvelgiame“, „kviečiame“, „įkvepiantis“, „aktualijos“).\n"
+        "5. Nepriekaištinga lietuvių kalba: lietuviškos kabutės „...“, taisyklinga didžiųjų raidžių rašyba (Dievas, Bažnyčia, Šventasis Raštas, valstybių ir asmenų vardai). Pirmasis žodis po „Bernardinai.lt šiandien: “ rašomas mažąja raide, nebent tai tikrinis vardas.\n"
         "6. Visos eilutės ilgis (su pradžia) – nuo 50 iki 84 simbolių. Gale nedėk taško.\n"
         "7. Grąžink TIK pačią vieną eilutę be jokių paaiškinimų.\n\n"
-        "Gero stiliaus pavyzdžiai:\n"
-        "Bernardinai.lt šiandien: Kristaus Karaliaus iškilmė ir pokalbis apie gyvą pamokslą\n"
-        "Bernardinai.lt šiandien: derybos dėl Ukrainos saugumo; kaip nepavargti nuo informacinio triukšmo\n"
-        "Bernardinai.lt šiandien: pokyčiai švietimo sistemoje ir nauja paroda Nacionalinėje galerijoje\n\n"
         "Šiandienos straipsniai:\n" + "\n".join(antrastes)
     )
 
     gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
     if gemini_key:
-        for model_name in ("gemini-2.5-flash", "gemini-2.0-flash"):
+        for model_name in ("gemini-2.5-flash", "gemini-2.5-flash-lite"):
             try:
                 g_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={gemini_key}"
                 g_body = {
@@ -581,7 +653,7 @@ def sugeneruoti_laisko_tema_su_di(main_list, ed_list):
 
 
 def suformuoti_laisko_tema(main_list, ed_list, cat_list, data_trumpa):
-    """Garantuoja taisyklingą temą: pirma bando kalbos redaktoriaus DI, o jei nėra rakto – naudoja švarią pagrindinę antraštę be dirbtinio 'ir'."""
+    """Garantuoja taisyklingą ir su #1 viršeliu suderintą laiško temą."""
     di_tema = sugeneruoti_laisko_tema_su_di(main_list, ed_list)
     if di_tema:
         return di_tema
@@ -589,12 +661,9 @@ def suformuoti_laisko_tema(main_list, ed_list, cat_list, data_trumpa):
     pradzia = "Bernardinai.lt šiandien: "
     visi = list(main_list) + list(ed_list)
 
-    # ATSARGINIS VARIANTAS BE DI (100 % žmogaus rašyta redakcijos kalba, jokių suklijavimų per „ir“!):
-    # 1. Jei pagrindinio dienos straipsnio („Hero“) antraštė telpa – rodome ją autentišką ir neiškraipytą
     if visi:
         hero_clean = isvalyti_viena_antraste_temai(visi[0].get("title", ""))
         if 15 <= len(hero_clean) <= 68:
-            # Jei pirmoji labai trumpa (iki 34 simb.), per kabliataškį pridedame antrąją trumpą temą
             if len(hero_clean) <= 34 and len(visi) > 1:
                 antras = isskirti_temos_akcenta(visi[1].get("title", ""), max_ilgis=34)
                 if antras and antras.lower() != hero_clean.lower():
@@ -608,7 +677,6 @@ def suformuoti_laisko_tema(main_list, ed_list, cat_list, data_trumpa):
                         return junginys
             return f"{pradzia}{hero_clean}"
 
-    # 2. Jei pirmoji antraštė itin ilga – ieškome bet kurios kitos neapkarpytos viršinės antraštės
     for st in visi[1:5]:
         st_clean = isvalyti_viena_antraste_temai(st.get("title", ""))
         if 18 <= len(st_clean) <= 66:
@@ -622,6 +690,12 @@ def suformuoti_laisko_tema(main_list, ed_list, cat_list, data_trumpa):
 # =========================================================================
 hero = main_posts[0]
 secondary_main = main_posts[1:]
+
+preheader_text = esc(
+    " • ".join([p.get("title", "") for p in (main_posts[:3] + editorials[:1]) if p.get("title")])
+)
+# Nematomi skyrikliai neleidžia Gmail / Outlook į laiško anonsą įtraukti techninės datos ar citatos antraštės!
+preheader_padding = "&#847;&zwnj;&nbsp;" * 85
 
 html_parts = []
 html_parts.append(f"""<!DOCTYPE html>
@@ -642,8 +716,8 @@ html_parts.append(f"""<!DOCTYPE html>
 </style>
 </head>
 <body style="margin:0; padding:0; background-color:{BG_PAGE}; font-family: Arial, Helvetica, sans-serif; color:{TEXT_MAIN}; -webkit-font-smoothing:antialiased;">
-<div style="display:none; max-height:0; overflow:hidden; opacity:0;">
-  {esc(" • ".join([p.get("title", "") for p in (main_posts[:3] + editorials[:1]) if p.get("title")]))}
+<div style="display:none; font-size:1px; line-height:1px; max-height:0px; max-width:0px; opacity:0; overflow:hidden; mso-hide:all;">
+  {preheader_text}{preheader_padding}
 </div>
 
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:{BG_PAGE}; padding: 20px 0;">
@@ -695,9 +769,17 @@ if isinstance(quote, dict) and quote.get("text"):
         </tr>
     """)
 
-# 2. PAGRINDINĖ DIENOS TEMA (IŠMANIAI ATRINKTA PAGAL SKAITOMUMĄ TARP ŠIANDIENOS VIRŠINIŲ)
+# 2. PAGRINDINĖ DIENOS TEMA (ATRINKTA PAGAL SKAITOMUMO GREITĮ ARBA REDAKTORIAUS VARNELĘ)
 hero_url = su_utm(hero.get("link"), "pagrindine_tema")
 hero_img = email_img(hero.get("image"), width=600, height=340)
+hero_badge = str(hero.get("badge") or "").lower()
+if hero_badge == "video":
+    hero_cta_txt = "Žiūrėti ir skaityti →"
+elif hero_badge == "audio":
+    hero_cta_txt = "Klausyti ir skaityti →"
+else:
+    hero_cta_txt = "Skaityti straipsnį →"
+
 html_parts.append(f"""
         <tr>
           <td class="content-pad" style="padding: 24px 28px 20px 28px;">
@@ -705,17 +787,17 @@ html_parts.append(f"""
             <a href="{hero_url}" target="_blank" style="text-decoration:none;">
               <img src="{hero_img}" alt="{esc(hero.get('title'))}" width="544" style="display:block; width:100%; max-width:544px; height:auto; border-radius:6px; border:0; margin-bottom:14px;">
             </a>
-            <div style="font-size:12px; font-weight:bold; color:{TEXT_MUTED}; text-transform:uppercase; margin-bottom:6px;">{esc(hero.get('author', 'Bernardinai.lt'))}</div>
+            <div style="margin-bottom:8px; line-height:1.4;">{formatuoti_meta_eilute(hero, hero_mode=True)}</div>
             <h1 style="font-family: Georgia, serif; font-size:23px; line-height:1.3; margin:0 0 10px 0; font-weight:bold;">
               <a href="{hero_url}" target="_blank" style="color:{TEXT_MAIN}; text-decoration:none;">{esc(hero.get('title'))}</a>
             </h1>
             <p style="font-size:15px; line-height:1.55; color:#444444; margin:0 0 14px 0;">{esc(hero.get('excerpt'))}</p>
-            <a href="{hero_url}" target="_blank" style="display:inline-block; background-color:{BRAND_ACCENT}; color:#ffffff; font-size:13px; font-weight:bold; text-decoration:none; padding:9px 18px; border-radius:4px;">Skaityti straipsnį →</a>
+            <a href="{hero_url}" target="_blank" style="display:inline-block; background-color:{BRAND_ACCENT}; color:#ffffff; font-size:13px; font-weight:bold; text-decoration:none; padding:9px 18px; border-radius:4px;">{hero_cta_txt}</a>
           </td>
         </tr>
 """)
 
-# KITI SVARBIAUSI VIRŠINIAI STRAIPSNIAI (AKTUALIJOS)
+# KITI SVARBIAUSI VIRŠINIAI STRAIPSNIAI (IKI 4 AKTUALIJŲ)
 if secondary_main:
     html_parts.append(f"""
         <tr>
@@ -724,7 +806,7 @@ if secondary_main:
     """)
     for idx, item in enumerate(secondary_main):
         i_url = su_utm(item.get("link"), f"aktualijos_{idx+1}")
-        i_img = email_img(item.get("image"), width=320, height=210)
+        i_img = email_img(item.get("image"), width=330, height=216)
         border_style = "border-bottom:1px solid #efefef; padding-bottom:16px; margin-bottom:16px;" if idx < len(secondary_main) - 1 else ""
         html_parts.append(f"""
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="{border_style}">
@@ -735,7 +817,7 @@ if secondary_main:
                   </a>
                 </td>
                 <td class="mobile-stack" valign="top">
-                  <div style="font-size:11px; font-weight:bold; color:{BRAND_ACCENT}; text-transform:uppercase; margin-bottom:4px;">{esc(item.get('author', 'Bernardinai.lt'))}</div>
+                  <div style="margin-bottom:5px; line-height:1.4;">{formatuoti_meta_eilute(item)}</div>
                   <div style="font-family: Georgia, serif; font-size:16px; font-weight:bold; line-height:1.35; margin-bottom:6px;">
                     <a href="{i_url}" target="_blank" style="color:{TEXT_MAIN}; text-decoration:none;">{esc(item.get('title'))}</a>
                   </div>
@@ -746,7 +828,7 @@ if secondary_main:
         """)
     html_parts.append("          </td>\n        </tr>")
 
-# TIESIOGINĖ UŽSAKOVO REKLAMA IŠ „📢 REKLAMOS VALDYMAS“ (JEI ŠIUO METU YRA AKTYVI UŽSAKOVO KAMPANIJA)
+# TIESIOGINĖ UŽSAKOVO ARBA PARTNERIŲ REKLAMA
 if isinstance(direct_ad, dict) and direct_ad.get("image") and direct_ad.get("click_url"):
     ad_img = email_img(direct_ad["image"], width=600)
     ad_click = uzkoduoti_url(direct_ad["click_url"])
@@ -762,7 +844,7 @@ if isinstance(direct_ad, dict) and direct_ad.get("image") and direct_ad.get("cli
         </tr>
     """)
 
-# 3. NUOMONĖS IR KOMENTARAI (TIK JEI YRA NAUJŲ, DAR NESIŲSTŲ TEKSTŲ)
+# 3. NUOMONĖS IR KOMENTARAI
 if editorials:
     html_parts.append(f"""
         <tr>
@@ -783,7 +865,7 @@ if editorials:
                   </a>
                 </td>
                 <td valign="middle">
-                  <div style="font-size:11px; font-weight:bold; text-transform:uppercase; color:{BRAND_ACCENT}; margin-bottom:3px;">{esc(ed.get('author'))}</div>
+                  <div style="margin-bottom:3px; line-height:1.35;">{formatuoti_meta_eilute(ed)}</div>
                   <div style="font-family: Georgia, serif; font-size:16px; font-weight:bold; line-height:1.35;">
                     <a href="{e_url}" target="_blank" style="color:{TEXT_MAIN}; text-decoration:none;">{esc(ed.get('title'))}</a>
                   </div>
@@ -793,7 +875,7 @@ if editorials:
         """)
     html_parts.append("          </td>\n        </tr>")
 
-# 4. SKAITOMIAUSI TEKSTAI (BE DUBLIKATŲ SU VAKARYKŠČIAIS)
+# 4. SKAITOMIAUSI TEKSTAI
 if most_read:
     html_parts.append(f"""
         <tr>
@@ -802,20 +884,22 @@ if most_read:
     """)
     for idx, mr in enumerate(most_read, start=1):
         m_url = su_utm(mr.get("link"), f"skaitomiausi_{idx}")
+        mr_rt = f" &bull; ⏱ {esc(mr.get('reading_time'))}" if mr.get("reading_time") else ""
+        mr_md = f"{esc(mr.get('media_label'))} &bull; " if mr.get("media_label") else ""
         html_parts.append(f"""
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:12px;">
               <tr>
                 <td width="34" valign="top" style="font-family: Georgia, serif; font-size:24px; font-weight:bold; color:{BRAND_ACCENT}; line-height:1.1;">{idx}.</td>
                 <td valign="top">
                   <a href="{m_url}" target="_blank" style="font-family: Georgia, serif; font-size:15px; font-weight:bold; color:{TEXT_MAIN}; text-decoration:none; line-height:1.35;">{esc(mr.get('title'))}</a>
-                  <div style="font-size:11px; color:{TEXT_MUTED}; margin-top:2px;">{esc(mr.get('author', 'Bernardinai.lt'))}</div>
+                  <div style="font-size:11px; color:{TEXT_MUTED}; margin-top:3px;">{mr_md}{esc(mr.get('author', 'Bernardinai.lt'))}{mr_rt}</div>
                 </td>
               </tr>
             </table>
         """)
     html_parts.append("          </td>\n        </tr>")
 
-# 5. RUBRIKŲ APŽVALGA (RODOMOS TIK TOS RUBRIKOS, KURIOSE YRA NAUJŲ TEKSTŲ)
+# 5. RUBRIKŲ APŽVALGA
 if categories:
     html_parts.append(f"""
         <tr>
@@ -839,7 +923,9 @@ if categories:
         """)
         for c_idx, ci in enumerate(c_items):
             ci_url = su_utm(ci.get("link"), f"rubrika_{cat.get('slug')}_{c_idx+1}")
-            ci_img = email_img(ci.get("image"), width=180, height=120)
+            ci_img = email_img(ci.get("image"), width=200, height=134)
+            ci_rt = f" &bull; ⏱ {esc(ci.get('reading_time'))}" if ci.get("reading_time") else ""
+            ci_md = f'<span style="color:{BRAND_ACCENT}; font-weight:bold;">{esc(ci.get("media_label"))}</span> &bull; ' if ci.get("media_label") else ""
             row_pad = "padding-bottom:10px; margin-bottom:10px; border-bottom:1px dotted #e5e5e5;" if c_idx < len(c_items) - 1 else ""
             html_parts.append(f"""
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="{row_pad}">
@@ -851,7 +937,7 @@ if categories:
                   </td>
                   <td valign="middle">
                     <a href="{ci_url}" target="_blank" style="font-family: Georgia, serif; font-size:15px; font-weight:bold; color:{TEXT_MAIN}; text-decoration:none; line-height:1.35;">{esc(ci.get('title'))}</a>
-                    <div style="font-size:11px; color:{TEXT_MUTED}; margin-top:3px;">{esc(ci.get('author', 'Bernardinai.lt'))}</div>
+                    <div style="font-size:11px; color:{TEXT_MUTED}; margin-top:3px;">{ci_md}{esc(ci.get('author', 'Bernardinai.lt'))}{ci_rt}</div>
                   </td>
                 </tr>
               </table>
@@ -859,7 +945,46 @@ if categories:
         html_parts.append("            </div>")
     html_parts.append("          </td>\n        </tr>")
 
-# 6. PARTNERIŲ VITRINA IŠ „🎁 PARTNERIŲ VITRINOS“ ĮSKIEPIO (MERCYSHOP / GYMGLISH SU STATISTIKA)
+# 5B. DIENA SU DIEVU (EVANGELIJOS KOMENTARAS IR DIENOS ŠVENTASIS)
+if isinstance(day_with_god, dict) and day_with_god.get("items"):
+    dwg_url = su_utm(day_with_god.get("url") or "https://www.bernardinai.lt/diena-su-dievu/", "diena_su_dievu")
+    dwg_items = day_with_god.get("items") or []
+    html_parts.append(f"""
+        <tr>
+          <td class="content-pad" style="padding: 4px 28px 18px 28px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#faf7f2; border:1px solid #e6dccf; border-left:4px solid {BRAND_DARK}; border-radius:6px;">
+              <tr>
+                <td style="padding: 14px 16px;">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:10px; border-bottom:1px solid #e9e0d4; padding-bottom:6px;">
+                    <tr>
+                      <td align="left" style="font-family: Georgia, serif; font-size:16px; font-weight:bold; color:{BRAND_DARK};">✝ Diena su Dievu</td>
+                      <td align="right"><a href="{dwg_url}" target="_blank" style="font-size:12px; color:{BRAND_DARK}; text-decoration:none; font-weight:bold;">Visi skaitiniai →</a></td>
+                    </tr>
+                  </table>
+    """)
+    for d_idx, dw_it in enumerate(dwg_items):
+        d_link = su_utm(dw_it.get("link"), f"diena_su_dievu_{d_idx+1}")
+        d_lbl = esc(dw_it.get("liturgical_label") or "Diena su Dievu")
+        d_rt = f" &bull; ⏱ {esc(dw_it.get('reading_time'))}" if dw_it.get("reading_time") else ""
+        d_pad = "padding-bottom:10px; margin-bottom:10px; border-bottom:1px dotted #dfd5c5;" if d_idx < len(dwg_items) - 1 else ""
+        html_parts.append(f"""
+                  <div style="{d_pad}">
+                    <span style="display:inline-block; background-color:#efe6d8; color:{BRAND_DARK}; font-size:10px; font-weight:bold; text-transform:uppercase; letter-spacing:0.6px; padding:2px 7px; border-radius:3px; margin-bottom:4px;">{d_lbl}</span>
+                    <div style="font-family: Georgia, serif; font-size:15px; font-weight:bold; line-height:1.35;">
+                      <a href="{d_link}" target="_blank" style="color:{TEXT_MAIN}; text-decoration:none;">{esc(dw_it.get('title'))}</a>
+                    </div>
+                    <div style="font-size:11px; color:{TEXT_MUTED}; margin-top:2px;">{esc(dw_it.get('author', 'Bernardinai.lt'))}{d_rt}</div>
+                  </div>
+        """)
+    html_parts.append("""
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+    """)
+
+# 6. PARTNERIŲ VITRINA (MERCYSHOP / GYMGLISH SU PASIRAŠYTA STATISTIKA)
 if isinstance(partner_showcase, dict) and partner_showcase.get("items"):
     ps_accent = esc(partner_showcase.get("accent") or "#a01b1b")
     ps_badge = esc(partner_showcase.get("badge") or "Partnerių vitrina")
@@ -930,7 +1055,7 @@ if isinstance(partner_showcase, dict) and partner_showcase.get("items"):
         </tr>
     """)
 
-# 7. AFIŠA – RENGINIAI IR KVIETIMAI (TIK AKTUALŪS IR DAR NESIŲSTI)
+# 7. AFIŠA – RENGINIAI IR KVIETIMAI
 if posters:
     afisa_all_url = su_utm("https://www.bernardinai.lt/afisa/", "afisa_visi")
     html_parts.append(f"""
@@ -956,7 +1081,7 @@ if posters:
         """)
     html_parts.append("          </td>\n        </tr>")
 
-# 8. NUOLATINIS DAUGIAKALBYSTĖS PRIMINIMAS (SKAITYMAS IR DALIJIMASIS 40+ KALBŲ)
+# 8. NUOLATINIS DAUGIAKALBYSTĖS PRIMINIMAS (40+ KALBŲ)
 share_base_url = hero.get("link") or "https://www.bernardinai.lt/"
 kalbu_mygtukai = [
     ("en", "🇬🇧 English"),
@@ -995,7 +1120,7 @@ html_parts.append(f"""
         </tr>
 """)
 
-# 9. PARAMOS BLOKAS IR REKVIZITAI (SU TIESIOGINIAIS STRIPE 5€ / 10€ / 25€ MYGTUKAIS)
+# 9. PARAMOS BLOKAS IR REKVIZITAI
 parama_url = su_utm("https://www.bernardinai.lt/parama/", "footer_parama")
 stripe_5 = "https://buy.stripe.com/eVqbJ22Me4Qh4Xd2V6aIM06"
 stripe_10 = "https://buy.stripe.com/28E7sM5YqfuVblBeDOaIM07"
@@ -1111,6 +1236,16 @@ if nl_rezimas in ("siusti", "juodrastis"):
         ]
         for s in secondary_main:
             plain_lines.append(f"- {s.get('title')}: {s.get('link')}")
+        if most_read:
+            plain_lines.append("")
+            plain_lines.append("SKAITOMIAUSI:")
+            for mr_it in most_read:
+                plain_lines.append(f"- {mr_it.get('title')}: {mr_it.get('link')}")
+        if isinstance(day_with_god, dict) and day_with_god.get("items"):
+            plain_lines.append("")
+            plain_lines.append("DIENA SU DIEVU:")
+            for dw_it in day_with_god.get("items") or []:
+                plain_lines.append(f"- {dw_it.get('title')}: {dw_it.get('link')}")
         plain_lines.extend(
             [
                 "",
@@ -1155,7 +1290,6 @@ if nl_rezimas in ("siusti", "juodrastis"):
                     ">>> Kasdienis naujienlaiškis sėkmingai perkeltas į OUTBOX"
                     " ir pradėtas siųsti prenumeratoriams!"
                 )
-            # Pažymime išsiųstus straipsnius ir citatą WordPress duomenų bazėje
             q_hash = quote.get("hash", "") if isinstance(quote, dict) else ""
             pazymeti_issiustus_straipsnius_wp(issue_post_ids, q_hash)
         else:
