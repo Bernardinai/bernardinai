@@ -33,12 +33,17 @@ def kritine_klaida(pranesimas):
 
 
 parser = argparse.ArgumentParser(
-    description="Bernardinai.lt kasdienio 18:00 val. naujienlaiškio generatorius (v2.0)"
+    description="Bernardinai.lt kasdienio 18:00 val. naujienlaiškio generatorius (v2.1)"
 )
 parser.add_argument(
     "--naujienlaiskis",
     default="",
     help="Veiksmas: juodrastis | siusti | nesiusti",
+)
+parser.add_argument(
+    "--pilna-perziura",
+    action="store_true",
+    help="Priverstinai sugeneruoti pilną 36 val. peržiūrą juodraščiui (tik ne 'siusti' režime)",
 )
 args, _ = parser.parse_known_args()
 
@@ -114,7 +119,7 @@ data_antrastei = (
 data_trumpiems = f"{now_lt.year} m. {menesiai[now_lt.month - 1]} {now_lt.day} d."
 
 print("=================================================================")
-print("LEIDINYS:       Bernardinai.lt kasdienis naujienlaiškis (v2.0)")
+print("LEIDINYS:       Bernardinai.lt kasdienis naujienlaiškis (v2.1)")
 print(f"DATA:           {data_antrastei}")
 print(f"REŽIMAS:        {nl_rezimas}")
 print("=================================================================")
@@ -298,8 +303,14 @@ def formatuoti_meta_eilute(item, hero_mode=False):
     return "".join(parts_html)
 
 
-def gauti_duomenis_is_wp_api():
-    endpoint = f"https://www.bernardinai.lt/wp-json/custom/v1/daily-newsletter?_t={int(datetime.datetime.now().timestamp())}"
+def gauti_duomenis_is_wp_api(preview_mode=False, force_full_preview=False):
+    q_params = {"_t": str(int(datetime.datetime.now().timestamp()))}
+    # Saugiklis: ?preview=1 siunčiamas TIK juodraščio arba vietinės peržiūros režime (niekada 'siusti'!)
+    if preview_mode and nl_rezimas != "siusti":
+        q_params["preview"] = "1"
+        if force_full_preview:
+            q_params["force_preview"] = "1"
+    endpoint = f"https://www.bernardinai.lt/wp-json/custom/v1/daily-newsletter?{urllib.parse.urlencode(q_params)}"
     req = urllib.request.Request(
         endpoint,
         headers={
@@ -453,9 +464,36 @@ def gauti_atsarginius_duomenis_standartiniu_api():
     }
 
 
-duomenys = gauti_duomenis_is_wp_api()
+force_full_preview_flag = (
+    nl_rezimas != "siusti"
+    and (
+        bool(args.pilna_perziura)
+        or os.environ.get("PILNA_PERZIURA", "").strip().lower() in ("taip", "true", "1", "yes")
+    )
+)
+is_preview_run = nl_rezimas in ("juodrastis", "nesiusti")
+
+duomenys = gauti_duomenis_is_wp_api(
+    preview_mode=is_preview_run,
+    force_full_preview=force_full_preview_flag,
+)
 if not duomenys:
     duomenys = gauti_atsarginius_duomenis_standartiniu_api()
+
+# Dviguba apsauga: 'siusti' režimas niekada negali išsiųsti peržiūros (preview) atsarginių straipsnių!
+if nl_rezimas == "siusti" and (
+    duomenys.get("preview_mode") or duomenys.get("preview_rebuilt_from_sent")
+):
+    kritine_klaida(
+        "Saugumo blokavimas: 'siusti' režime gauti peržiūros (preview) duomenys!"
+    )
+
+preview_rebuilt = bool(duomenys.get("preview_rebuilt_from_sent"))
+if preview_rebuilt:
+    print(
+        ">>> PERŽIŪROS REŽIMAS: šios dienos laida jau buvo išsiųsta (arba naujų viršinių < 2),"
+        " todėl bandomajam juodraščiui sugeneruotas pilnas 36 val. vaizdas!"
+    )
 
 # Apsaugome viršinių skaičių iki maks. 5 (1 Hero + 4 Aktualijos)
 main_posts = (duomenys.get("main_posts") or [])[:5]
@@ -1195,7 +1233,8 @@ if nl_rezimas in ("siusti", "juodrastis"):
         f"{menesiai[now_lt.month - 1]} {now_lt.day} d.",
     )
     subject_line = f"{subject_prefix}{bazine_tema}"
-    campaign_internal_name = f"{subject_prefix}Kasdienis naujienlaiškis ({today_str})"
+    draft_tag = "[BANDOMASIS – PERŽIŪRA] " if (nl_rezimas == "juodrastis" and preview_rebuilt) else subject_prefix
+    campaign_internal_name = f"{draft_tag}Kasdienis naujienlaiškis ({today_str})"
     print(f">>> Suformuota laiško tema: {subject_line}")
     print(f">>> Vidinis MailerLite pavadinimas: {campaign_internal_name}")
 
